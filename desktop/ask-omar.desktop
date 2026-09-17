@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Ask Omar
+Comment=Open the Ask Omar desktop assistant
+Exec=ask-omar-open open
+Terminal=false
+Categories=Utility;
+Keywords=assistant;omarchy;help;settings;
+StartupNotify=false

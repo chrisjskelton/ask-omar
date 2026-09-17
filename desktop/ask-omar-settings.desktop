@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Ask Omar Settings
+Comment=Configure Ask Omar
+Exec=ask-omar-open settings
+Terminal=false
+Categories=Settings;
+Keywords=assistant;omarchy;settings;startup;monitor;
+StartupNotify=false

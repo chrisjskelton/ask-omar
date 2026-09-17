@@ -1,0 +1,23 @@
+# Ask Omar configuration. Installed as ~/.config/ask-omar/config.toml.
+
+[agent]
+# Pi is the local headless assistant backend.
+backend = "pi"
+# Leave provider/model empty on first install. Ask Omar fills them from Pi's
+# defaults (or the first model Pi lists) when you run setup / open Settings.
+provider = ""
+model = ""
+thinking = "low"
+timeout_seconds = 90
+
+[conversation]
+# A new in-memory Pi conversation starts after this many idle minutes.
+# Set to 0 to keep the conversation until New, service restart, or failure.
+idle_timeout_minutes = 30
+
+[history]
+# Local request/response records available under Settings → Past answers.
+limit = 100
+
+# UI settings such as width and multi-monitor placement are stored by Omarchy
+# on the widget entry in ~/.config/omarchy/shell.json.

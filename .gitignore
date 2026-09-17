@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+config/config.toml
+
+# Runtime state and private usage data
+state.json
+history*.json
+*.log
+*.sock
+
+# Local captures and build output
+captures/
+screenshots/
+recordings/
+build/
+dist/
+*.egg-info/
+
+.DS_Store

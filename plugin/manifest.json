@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "id": "ask-omar.assistant",
+  "name": "Ask Omar",
+  "version": "0.1.0",
+  "author": "Ask Omar contributors",
+  "description": "An always-available natural-language assistant for Omarchy",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "AskOmar.qml"
+  },
+  "barWidget": {
+    "displayName": "Ask Omar",
+    "category": "Utilities",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "width": 420,
+      "displays": [],
+      "openOnStartup": false,
+      "hiddenFromBar": false
+    },
+    "schema": [
+      {
+        "key": "width",
+        "type": "number",
+        "label": "Width",
+        "description": "Width of the Ask Omar bar field"
+      },
+      {
+        "key": "displays",
+        "type": "array",
+        "label": "Displays",
+        "description": "Displays where Ask Omar is shown"
+      },
+      {
+        "key": "openOnStartup",
+        "type": "boolean",
+        "label": "Open at login",
+        "description": "Show the Ask Omar panel when Omarchy starts"
+      }
+    ]
+  }
+}
