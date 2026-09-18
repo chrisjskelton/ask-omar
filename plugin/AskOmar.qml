@@ -18,6 +18,7 @@ BarWidget {
   property string activityText: "Thinking"
   property int activityDots: 0
   property string queryText: ""
+  property string replyText: ""
   property string submittedQuery: ""
   property string pendingActionId: ""
   property string failedQuery: ""
@@ -46,7 +47,7 @@ BarWidget {
   property double lastAnswerAt: 0
   readonly property bool historyExpanded: panelView === "answers" || panelView === "answer"
   readonly property bool historyItemOpen: panelView === "answer"
-  readonly property bool showBackToChat: historyExpanded && conversationTurns.length > 0 && !answersFromSettings
+  readonly property bool showBackToChat: historyExpanded && (conversationTurns.length > 0 || busy)
   readonly property bool showBackToSettings: historyExpanded && answersFromSettings
   readonly property int lastAskIndex: {
     for (var i = conversationTurns.length - 1; i >= 0; i--)
@@ -55,6 +56,8 @@ BarWidget {
   }
   readonly property var visibleTurns: {
     if ((!resultVisible && !busy) || lastAskIndex < 0) return []
+    // Allow once is the only job — don't also stack the ask above it.
+    if (busy && pendingConfirmation !== null) return []
     if (threadExpanded) return conversationTurns
     // Working: show the ask in flight. Answered: Omar's reply only — not the question.
     if (busy) return conversationTurns.slice(lastAskIndex)
@@ -97,6 +100,13 @@ BarWidget {
   property string recapText: ""
   property bool showSlowHint: false
   property var pendingConfirmation: null
+  // Only auto-open the panel the first time we see a given confirmation id —
+  // later activity polls must not undo a click-away dismiss.
+  property string surfacedConfirmationId: ""
+  // While Allow/Deny is in flight, ignore activity echoes of the same id and
+  // keep a snapshot so a failed confirm can restore the prompt.
+  property string confirmInFlightId: ""
+  property var confirmSnapshot: null
   property bool scratchpadMode: false
   property bool restoringScratchpad: false
   property bool scratchpadDeletePending: false
@@ -325,7 +335,9 @@ BarWidget {
     replyExpanded = false
     threadExpanded = false
     answersFromSettings = false
-    resultVisible = conversationTurns.length > 0
+    settingsExpanded = false
+    resultVisible = conversationTurns.length > 0 || busy || pendingConfirmation !== null
+    if (busy) loadActivity()
     scrollChatToEnd()
     Qt.callLater(function() { root.focusComposer() })
   }
@@ -398,6 +410,7 @@ BarWidget {
     historyPreview = null
     historyItemResponse = ""
     replyExpanded = true
+    // Keep any in-progress reply draft — do not wipe on reopen.
     Qt.callLater(function() {
       if (panelComposerField.visible) panelComposerField.forceActiveFocus()
     })
@@ -405,6 +418,46 @@ BarWidget {
 
   function collapseReply() {
     replyExpanded = false
+    replyText = ""
+  }
+
+  function clearPendingConfirmation() {
+    pendingConfirmation = null
+    surfacedConfirmationId = ""
+    confirmInFlightId = ""
+    confirmSnapshot = null
+  }
+
+  function handleConfirm(raw) {
+    var inflightId = confirmInFlightId
+    var snapshot = confirmSnapshot
+    confirmInFlightId = ""
+    confirmSnapshot = null
+    var result
+    try {
+      result = JSON.parse(String(raw || "").trim())
+    } catch (error) {
+      errorText = "Ask Omar could not send that approval."
+      if (snapshot) {
+        pendingConfirmation = snapshot
+        resultVisible = true
+      }
+      return
+    }
+    if (result.ok) return
+    var message = String(result.error || "Ask Omar could not send that approval.")
+    if (String(result.error_code || "") === "stale_confirmation")
+      message = "That approval request is no longer pending."
+    errorText = message
+    // Restore the prompt only when the same request is still the one we tried.
+    if (snapshot && String(snapshot.id || "") === inflightId) {
+      pendingConfirmation = snapshot
+      resultVisible = true
+      if (!opened) {
+        opened = true
+        updateGeometry()
+      }
+    }
   }
 
   function scrollChatToEnd() {
@@ -436,14 +489,24 @@ BarWidget {
     answersFromSettings = false
     threadExpanded = false
     freshNotice = false
-    // Brief grace: keep the last reply visible if you bounce out and back quickly.
+    // Keep Working / Allow-once visible across a quick dismiss. Otherwise a short
+    // grace keeps the last reply if you bounce out and back.
     var graceMs = 30000
-    if (conversationTurns.length > 0 && lastAnswerAt > 0 && (Date.now() - lastAnswerAt) < graceMs)
+    if (busy || pendingConfirmation !== null)
+      resultVisible = true
+    else if (conversationTurns.length > 0 && lastAnswerAt > 0 && (Date.now() - lastAnswerAt) < graceMs)
       resultVisible = true
     else
       resultVisible = false
+    // Restore an unfinished reply draft after click-away (needs the panel
+    // body visible so showReplyChrome / the composer can appear).
+    if (!busy && pendingConfirmation === null && String(replyText || "").trim() !== "") {
+      replyExpanded = true
+      resultVisible = true
+    }
     opened = true
     if (!healthChecked) checkHealth()
+    if (busy) loadActivity()
     Qt.callLater(function() {
       root.updateGeometry()
       root.focusComposer()
@@ -532,7 +595,8 @@ BarWidget {
     if (cancelVoice === undefined) cancelVoice = true
     if (cancelVoice && (micState === "recording" || micState === "transcribing") && bar)
       bar.run("voxtype record cancel")
-    if (pendingConfirmation) respondToConfirmation("Deny")
+    // Dismissing the panel is not Deny — an Allow-once prompt must survive a
+    // click-away so you can reopen and approve. Use Deny / Stop / Escape to refuse.
     openPending = false
     settingsPending = false
     historyPending = false
@@ -556,7 +620,8 @@ BarWidget {
     openPending = false
     settingsPending = false
     historyPending = false
-    pendingConfirmation = null
+    if (pendingConfirmation) respondToConfirmation("Deny")
+    else clearPendingConfirmation()
     draftSaveTimer.stop()
     scratchpadSaveTimer.stop()
     activityTimer.stop()
@@ -633,6 +698,13 @@ BarWidget {
     panelView = "answers"
   }
 
+  function startStdinCommand(proc, argv, body) {
+    proc.pendingStdin = String(body ?? "")
+    proc.stdinEnabled = true
+    proc.command = argv
+    proc.running = true
+  }
+
   function submit(text) {
     var value = String(text || "").trim()
     if (!value || busy || queryProcess.running) return
@@ -663,17 +735,21 @@ BarWidget {
     retryWarning = ""
     recapText = ""
     showSlowHint = false
-    pendingConfirmation = null
+    clearPendingConfirmation()
     appendConversationTurn("you", value)
     queryText = ""
+    replyText = ""
+    replyExpanded = false
+    // Don't let a stale draft reappear in the bar while Working.
+    draftSaveTimer.stop()
+    startStdinCommand(draftSaveProcess, ["ask-omar", "draft", "--stdin"], "")
     requestState = "working"
     activityText = "Thinking"
     activityDots = 0
     busyLabel = "Working…"
     busy = true
     slowHintTimer.restart()
-    queryProcess.command = ["ask-omar", "query", value]
-    queryProcess.running = true
+    startStdinCommand(queryProcess, ["ask-omar", "query", "--stdin"], value)
   }
 
   function runAction(actionId) {
@@ -691,7 +767,7 @@ BarWidget {
     errorText = ""
     recapText = ""
     showSlowHint = false
-    pendingConfirmation = null
+    clearPendingConfirmation()
     requestState = "working"
     activityText = "Running action"
     activityDots = 0
@@ -708,7 +784,10 @@ BarWidget {
   }
 
   function acceptField() {
-    submit(queryField.text)
+    if (replyExpanded && showPanelComposer)
+      submit(panelComposerField.text)
+    else
+      submit(queryField.text)
   }
 
   function copyResponse() {
@@ -1129,18 +1208,63 @@ BarWidget {
       if (result.ok) {
         if (result.message) activityText = String(result.message).replace(/…$/, "")
         if (result.confirmation) {
+          var nextId = String(result.confirmation.id || "")
+          // Don't resurrect the prompt while Allow/Deny for this id is in flight.
+          if (confirmInFlightId !== "" && nextId === confirmInFlightId) return
+          // After a successful Allow/Deny, activity can still echo the same id
+          // briefly — do not put the chrome back once we've cleared it.
+          if (
+            pendingConfirmation === null
+            && confirmInFlightId === ""
+            && nextId !== ""
+            && nextId === surfacedConfirmationId
+          ) return
           pendingConfirmation = result.confirmation
+          // First sight of this confirmation opens the panel once. Later polls
+          // keep the payload fresh without undoing a click-away dismiss.
+          if (nextId !== "" && nextId !== surfacedConfirmationId) {
+            surfacedConfirmationId = nextId
+            surfacePendingConfirmation()
+          }
+        } else if (confirmInFlightId === "" && pendingConfirmation !== null) {
+          // Backend cleared the pending approval — drop the UI too.
+          clearPendingConfirmation()
         }
       }
     } catch (error) { }
+  }
+
+  // Approvals must interrupt whatever chrome is up — do not wait for a bar click.
+  function surfacePendingConfirmation() {
+    if (pendingConfirmation === null) return
+    scratchpadMode = false
+    settingsExpanded = false
+    screenshotMenuExpanded = false
+    panelView = "chat"
+    historyPreview = null
+    historyItemResponse = ""
+    clearHistoryPending = false
+    answersFromSettings = false
+    replyExpanded = false
+    resultVisible = true
+    if (!opened) {
+      opened = true
+      updateGeometry()
+    }
+    Qt.callLater(function() { root.updateGeometry() })
   }
 
   function respondToConfirmation(response) {
     if (!pendingConfirmation || confirmProcess.running) return
     var requestId = String(pendingConfirmation.id || "")
     if (requestId === "") return
+    confirmInFlightId = requestId
+    confirmSnapshot = pendingConfirmation
     confirmProcess.command = ["ask-omar", "confirm", requestId, response]
     confirmProcess.running = true
+    // Drop the prompt immediately, but keep surfacedConfirmationId so the next
+    // activity poll (same id, still pending until Pi acknowledges) cannot
+    // treat it as a brand-new confirmation and re-open the panel.
     pendingConfirmation = null
   }
 
@@ -1220,7 +1344,7 @@ BarWidget {
     activityDots = 0
     busyLabel = ""
     showSlowHint = false
-    pendingConfirmation = null
+    clearPendingConfirmation()
     var result
     try {
       result = JSON.parse(String(raw || "").trim())
@@ -1337,9 +1461,12 @@ BarWidget {
     function settings(): void { root.showSettings() }
     function setDraft(text: string): void {
       if (root.scratchpadMode) root.appendScratchpadText(text)
+      else if (root.replyExpanded) root.replyText = text
       else root.queryText = text
     }
-    function getDraft(): string { return root.queryText }
+    function getDraft(): string {
+      return root.replyExpanded ? root.replyText : root.queryText
+    }
     function copyLastAnswer(): string {
       if (root.responseText === "") return "no answer"
       root.copyResponse()
@@ -1404,7 +1531,7 @@ BarWidget {
       onStreamFinished: {
         try {
           var result = JSON.parse(String(text || "").trim())
-          if (result.ok && result.draft && root.queryText === "") {
+          if (result.ok && result.draft && root.queryText === "" && !root.busy && !root.replyExpanded) {
             root.restoringDraft = true
             root.queryText = String(result.draft)
             root.restoringDraft = false
@@ -1416,7 +1543,13 @@ BarWidget {
 
   Process {
     id: draftSaveProcess
+    property string pendingStdin: ""
     stdout: StdioCollector { waitForEnd: true }
+    onStarted: {
+      write(pendingStdin)
+      pendingStdin = ""
+      stdinEnabled = false
+    }
   }
 
   Process {
@@ -1429,7 +1562,13 @@ BarWidget {
 
   Process {
     id: scratchpadSaveProcess
+    property string pendingStdin: ""
     stdout: StdioCollector { waitForEnd: true }
+    onStarted: {
+      write(pendingStdin)
+      pendingStdin = ""
+      stdinEnabled = false
+    }
   }
 
   Process {
@@ -1467,6 +1606,7 @@ BarWidget {
 
   Process {
     id: queryProcess
+    property string pendingStdin: ""
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.handleResult(text)
@@ -1474,6 +1614,11 @@ BarWidget {
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: if (String(text || "").trim() !== "") root.errorText = String(text).trim()
+    }
+    onStarted: {
+      write(pendingStdin)
+      pendingStdin = ""
+      stdinEnabled = false
     }
   }
 
@@ -1499,7 +1644,14 @@ BarWidget {
 
   Process {
     id: confirmProcess
-    stdout: StdioCollector { waitForEnd: true }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.handleConfirm(text)
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (String(text || "").trim() !== "") root.errorText = String(text).trim()
+    }
   }
 
   Process {
@@ -1638,8 +1790,7 @@ BarWidget {
         draftSaveTimer.restart()
         return
       }
-      draftSaveProcess.command = ["ask-omar", "draft", root.queryText]
-      draftSaveProcess.running = true
+      startStdinCommand(draftSaveProcess, ["ask-omar", "draft", "--stdin"], root.queryText)
     }
   }
 
@@ -1652,8 +1803,11 @@ BarWidget {
         scratchpadSaveTimer.restart()
         return
       }
-      scratchpadSaveProcess.command = ["ask-omar", "scratchpad-notes-save", JSON.stringify(root.scratchpadNotes)]
-      scratchpadSaveProcess.running = true
+      startStdinCommand(
+        scratchpadSaveProcess,
+        ["ask-omar", "scratchpad-notes-save", "--stdin"],
+        JSON.stringify(root.scratchpadNotes),
+      )
     }
   }
 
@@ -1684,9 +1838,9 @@ BarWidget {
       anchors.rightMargin: Style.space(6)
       anchors.verticalCenter: parent.verticalCenter
       textFormat: Text.PlainText
-      text: root.queryText !== "" ? root.queryText : "Ask Omar…"
+      text: (!root.busy && root.queryText !== "") ? root.queryText : "Ask Omar…"
       elide: Text.ElideRight
-      color: root.queryText !== "" ? root.foreground : Qt.darker(root.foreground, 1.55)
+      color: (!root.busy && root.queryText !== "") ? root.foreground : Qt.darker(root.foreground, 1.55)
       font.family: root.bar ? root.bar.fontFamily : Style.font.family
       font.pixelSize: Style.font.body
     }
@@ -1797,9 +1951,14 @@ BarWidget {
       context: Qt.WindowShortcut
       enabled: assistantWindow.visible
       onActivated: {
-        if (root.historyItemOpen) root.clearHistoryPreview()
+        if (root.pendingConfirmation) root.respondToConfirmation("Deny")
+        else if (root.historyItemOpen) root.clearHistoryPreview()
         else if (root.historyExpanded) root.backFromAnswers()
-        else if (root.threadExpanded) root.threadExpanded = false
+        else if (root.replyExpanded) {
+          // Collapse Reply only — keep the draft for the next Reply click.
+          root.replyExpanded = false
+          queryField.forceActiveFocus()
+        } else if (root.threadExpanded) root.threadExpanded = false
         else root.close()
       }
     }
@@ -2947,7 +3106,7 @@ BarWidget {
                   fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
                   fontSize: Style.font.bodySmall
                   Accessible.name: "Deny the command"
-                  Keys.onEscapePressed: root.close()
+                  Keys.onEscapePressed: root.respondToConfirmation("Deny")
                   onClicked: root.respondToConfirmation("Deny")
                 }
 
@@ -2960,7 +3119,7 @@ BarWidget {
                   fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
                   fontSize: Style.font.bodySmall
                   Accessible.name: "Allow the command once"
-                  Keys.onEscapePressed: root.close()
+                  Keys.onEscapePressed: root.respondToConfirmation("Deny")
                   onClicked: root.respondToConfirmation("Allow")
                 }
               }
@@ -3142,23 +3301,20 @@ BarWidget {
               anchors.fill: parent
               anchors.leftMargin: Style.space(8)
               anchors.rightMargin: Style.space(8)
-              text: root.queryText
+              text: root.replyText
               placeholderText: "Reply to Omar…"
               foreground: root.foreground
               accent: root.accent
               enabled: !root.busy
               background: Item {}
-              onTextChanged: root.queryText = text
+              onTextChanged: root.replyText = text
               Accessible.name: "Reply to Omar"
               onAccepted: root.acceptField()
               Keys.onPressed: function(event) {
                 if (event.key === Qt.Key_Escape) {
-                  if (String(panelComposerField.text || "").trim() === "") {
-                    root.collapseReply()
-                    queryField.forceActiveFocus()
-                  } else {
-                    root.close()
-                  }
+                  // Collapse Reply without wiping the draft or dismissing the panel.
+                  root.replyExpanded = false
+                  queryField.forceActiveFocus()
                   event.accepted = true
                 }
               }

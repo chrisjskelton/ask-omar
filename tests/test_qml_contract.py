@@ -30,10 +30,17 @@ class QmlInteractionContractTests(unittest.TestCase):
 
     def test_chat_thread_spike_controls_exist(self):
         self.assertIn("property var conversationTurns:", QML)
+        self.assertIn("property string replyText:", QML)
         self.assertIn("function appendConversationTurn(role, text)", QML)
         self.assertIn("id: chatThreadColumn", QML)
         self.assertIn("id: panelComposerField", QML)
         self.assertIn('placeholderText: "Reply to Omar…"', QML)
+        self.assertIn("text: root.replyText", QML)
+        self.assertIn("onTextChanged: root.replyText = text", QML)
+        # Reply draft stays in the panel — never shares the menubar Ask field.
+        composer = QML[QML.index("id: panelComposerField"):QML.index("id: panelComposerField") + 900]
+        self.assertIn("text: root.replyText", composer)
+        self.assertNotIn("text: root.queryText", composer)
         self.assertIn('text: "Reply"', QML)
         self.assertIn("function openReply()", QML)
         self.assertIn("id: replyFooter", QML)
@@ -44,12 +51,20 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("Whole strip under the reply opens Reply", QML)
         self.assertIn("property bool threadExpanded", QML)
         self.assertIn("visibleTurns", QML)
+        self.assertIn("busy && pendingConfirmation !== null", QML)
         self.assertIn('text: root.threadExpanded ? "Hide chat" : "Show chat"', QML)
         self.assertIn("showChatToggle", QML)
         self.assertIn("compact panel underneath", QML)
         self.assertIn("showResultPanel", QML)
         self.assertIn("function toggleThread()", QML)
-        self.assertIn("Brief grace: keep the last reply visible", QML)
+        self.assertIn("graceMs = 30000", QML)
+        self.assertIn("busy || pendingConfirmation !== null", QML)
+        self.assertIn("function startStdinCommand(proc, argv, body)", QML)
+        self.assertIn('["ask-omar", "query", "--stdin"]', QML)
+        self.assertIn('["ask-omar", "draft", "--stdin"]', QML)
+        self.assertIn('["ask-omar", "scratchpad-notes-save", "--stdin"]', QML)
+        self.assertNotIn('queryProcess.command = ["ask-omar", "query", value]', QML)
+        self.assertNotIn('draftSaveProcess.command = ["ask-omar", "draft", root.queryText]', QML)
         self.assertIn("function backToSettings()", QML)
         self.assertIn('text: "Back to settings"', QML)
         self.assertIn("openAnswersList(true)", QML)
@@ -309,14 +324,73 @@ class QmlInteractionContractTests(unittest.TestCase):
     def test_confirmation_polling_via_activity(self):
         self.assertIn("result.confirmation", QML)
         self.assertIn("pendingConfirmation = result.confirmation", QML)
+        self.assertIn("surfacePendingConfirmation()", QML)
+        self.assertIn("function surfacePendingConfirmation()", QML)
+        self.assertIn("surfacedConfirmationId", QML)
+        self.assertIn("function clearPendingConfirmation()", QML)
+        self.assertIn("confirmInFlightId", QML)
+        self.assertIn("function handleConfirm(raw)", QML)
+        # First sight surfaces once; later polls must not re-open after dismiss.
+        self.assertIn("nextId !== surfacedConfirmationId", QML)
+        self.assertIn("confirmInFlightId !== \"\" && nextId === confirmInFlightId", QML)
+        self.assertIn("nextId === surfacedConfirmationId", QML)
+        self.assertIn("clearPendingConfirmation()", QML[QML.index("  function handleActivity(raw)"):QML.index("  function surfacePendingConfirmation()")])
+        # Deny/Allow must not reset surfacedConfirmationId before Pi acknowledges.
+        respond = QML[QML.index("  function respondToConfirmation(response) {"):QML.index("  function focusMicrophoneTarget()")]
+        self.assertIn("pendingConfirmation = null", respond)
+        self.assertIn("confirmInFlightId = requestId", respond)
+        self.assertNotIn("clearPendingConfirmation()", respond)
+        self.assertIn("id: confirmProcess", QML)
+        self.assertIn("root.handleConfirm(text)", QML)
         timer = QML[QML.index("id: activityTimer"):QML.index("id: draftSaveTimer")]
         self.assertIn("interval: 1000", timer)
         self.assertIn("root.loadActivity()", timer)
         self.assertNotIn("activityExpanded", timer)
 
-    def test_close_auto_denies_pending_confirmation(self):
-        close_block = QML[QML.index("  function close(cancelVoice)"):QML.index("  function toggle()")]
-        self.assertIn("respondToConfirmation", close_block)
+    def test_reply_draft_survives_dismiss_and_reopen(self):
+        open_reply = QML[QML.index("  function openReply() {"):QML.index("  function collapseReply()")]
+        self.assertNotIn('replyText = ""', open_reply)
+        reveal = QML[QML.index("  function reveal() {"):QML.index("  function open() {")]
+        self.assertIn('String(replyText || "").trim() !== ""', reveal)
+        self.assertIn("replyExpanded = true", reveal)
+        self.assertIn("resultVisible = true", reveal)
+        close_block = QML[QML.index("  function close(cancelVoice)"):QML.index("  function quitApplication()")]
+        self.assertIn("replyExpanded = false", close_block)
+        self.assertNotIn('replyText = ""', close_block)
+        composer_keys = QML[QML.index("id: panelComposerField"):QML.index("id: panelComposerField") + 1200]
+        self.assertIn("root.replyExpanded = false", composer_keys)
+        # Window Escape must collapse Reply before closing the panel.
+        start = QML.index('sequence: "Escape"')
+        shortcut = QML[start:start + 700]
+        self.assertIn("else if (root.replyExpanded)", shortcut)
+        self.assertIn("root.replyExpanded = false", shortcut)
+        self.assertIn("else root.close()", shortcut)
+        self.assertLess(
+            shortcut.index("else if (root.replyExpanded)"),
+            shortcut.index("else root.close()"),
+        )
+
+    def test_close_keeps_pending_confirmation_for_reopen(self):
+        close_block = QML[QML.index("  function close(cancelVoice)"):QML.index("  function quitApplication()")]
+        self.assertNotIn("respondToConfirmation", close_block)
+        reveal = QML[QML.index("  function reveal() {"):QML.index("  function open() {")]
+        self.assertIn("busy || pendingConfirmation !== null", reveal)
+        self.assertIn("if (busy) loadActivity()", reveal)
+        self.assertIn('if (root.pendingConfirmation) root.respondToConfirmation("Deny")', QML)
+        quit = QML[QML.index("  function quitApplication() {"):QML.index("  function hideFromBar()")]
+        self.assertIn('respondToConfirmation("Deny")', quit)
+
+    def test_past_answers_can_return_to_live_chat(self):
+        self.assertIn(
+            "readonly property bool showBackToChat: historyExpanded && (conversationTurns.length > 0 || busy)",
+            QML,
+        )
+        self.assertNotIn(
+            "showBackToChat: historyExpanded && conversationTurns.length > 0 && !answersFromSettings",
+            QML,
+        )
+        back = QML[QML.index("  function backToChat() {"):QML.index("  function backToSettings() {")]
+        self.assertIn("if (busy) loadActivity()", back)
 
     def test_guard_config_is_installable(self):
         from pathlib import Path
@@ -338,7 +412,8 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn('id: barScratchpad', QML)
         self.assertIn('text: "󰎚"', QML)
         self.assertIn("function openScratchpad()", QML)
-        self.assertIn('scratchpadSaveProcess.command = ["ask-omar", "scratchpad-notes-save", JSON.stringify(root.scratchpadNotes)]', QML)
+        self.assertIn('["ask-omar", "scratchpad-notes-save", "--stdin"]', QML)
+        self.assertIn("startStdinCommand(", QML)
         self.assertIn('scratchpadLoadProcess.command = ["ask-omar", "scratchpad-notes"]', QML)
         self.assertIn("id: scratchpadToolbar", QML)
         self.assertIn("onClicked: root.showAssistant()", QML)
