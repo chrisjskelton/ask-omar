@@ -181,6 +181,37 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertEqual(self.omar.handle({"type": "scratchpad_get"})["text"], saved["text"])
         self.assertEqual(self.omar.handle({"type": "scratchpad_clear"})["text"], "")
 
+    def test_over_limit_requests_return_codes_and_preserve_state(self):
+        self.omar.handle({"type": "draft_set", "draft": "saved draft"})
+        self.omar.handle({"type": "scratchpad_set", "text": "saved text"})
+        self.omar.handle({"type": "scratchpad_notes_save", "notes": ["saved note"]})
+        before = self.omar.state.path.read_bytes()
+        requests = [
+            ({"type": "query", "query": "q" * 2001}, "query_too_long"),
+            ({"type": "draft_set", "draft": "d" * 2001}, "draft_too_long"),
+            ({"type": "scratchpad_set", "text": "s" * 20001}, "scratchpad_too_long"),
+            ({"type": "scratchpad_notes_save", "notes": [""] * 21}, "scratchpad_notes_too_many"),
+            ({"type": "scratchpad_notes_save", "notes": ["n" * 20001]}, "scratchpad_note_too_long"),
+            ({"type": "scratchpad_notes_save", "notes": [42]}, "invalid_scratchpad_notes"),
+        ]
+        for request, code in requests:
+            result = self.omar.handle(request)
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error_code"], code)
+            self.assertEqual(self.omar.state.path.read_bytes(), before)
+
+    def test_query_at_limit_reaches_agent_without_truncation(self):
+        query = "q" * self.omar.state.max_query_chars
+        agent = Mock()
+        agent.query.return_value = "Answer"
+        agent.last_tools_used = []
+        self.omar.agent = agent
+        with patch.object(self.omar, "agent_prompt", side_effect=lambda text: text):
+            result = self.omar.query(query)
+        self.assertTrue(result["ok"])
+        agent.query.assert_called_once()
+        self.assertEqual(agent.query.call_args.args[0], query)
+
     def test_scratchpad_screenshot_attachment_is_private_markdown(self):
         source = Path(self.temp.name) / "source image.png"
         source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"image data")

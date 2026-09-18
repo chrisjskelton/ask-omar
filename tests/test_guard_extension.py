@@ -78,7 +78,7 @@ class GuardExtensionTests(unittest.TestCase):
         for command in (
             'echo \'{"enabled":false}\' > ~/.config/ask-omar/guard.json',
             "cp /tmp/evil.ts ~/.local/share/ask-omar/extensions/ask-omar-guard.ts",
-            "rm -f /home/cs/.config/ask-omar/guard.json",
+            "rm -f /home/example/.config/ask-omar/guard.json",
             "tee /home/user/.config/ask-omar/guard.json",
         ):
             with self.subTest(command=command):

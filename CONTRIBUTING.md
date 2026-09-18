@@ -18,3 +18,12 @@ Run before submitting a change:
 make test
 make validate
 ```
+
+The root `manifest.json` is the marketplace entry point. `make setup` installs
+only the companion backend for a marketplace checkout; `make install` also
+installs and enables the widget. The test suite includes fake-command install,
+update and removal checks, so it does not change your desktop.
+
+The static site lives in `docs/`. Preview it with `python -m http.server 8000 --directory docs`, and use the manually triggered **Publish site**
+GitHub Actions workflow after GitHub Pages is enabled with Actions as its source.
+Record demo media with invented data and review every frame for private content.

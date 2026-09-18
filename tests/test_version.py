@@ -11,7 +11,7 @@ from ask_omar.cli import parser
 class VersionTests(unittest.TestCase):
     def test_version_is_consistent_and_available_from_cli(self):
         manifest = json.loads(
-            (Path(__file__).parents[1] / "plugin" / "manifest.json").read_text()
+            (Path(__file__).parents[1] / "manifest.json").read_text()
         )
         self.assertEqual(__version__, "0.1.0")
         self.assertEqual(manifest["version"], __version__)

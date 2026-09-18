@@ -144,8 +144,9 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertNotIn('text: "Answers"', header)
         self.assertNotIn('text: "Hide history"', header)
 
-    def test_copy_uses_argv_and_answers_support_partial_selection(self):
-        self.assertIn('copyProcess.command = ["wl-copy", "--", value]', QML)
+    def test_copy_uses_stdin_and_answers_support_partial_selection(self):
+        self.assertEqual(QML.count('startStdinCommand(copyProcess, ["wl-copy"], value)'), 2)
+        self.assertNotIn('copyProcess.command = ["wl-copy", "--", value]', QML)
         self.assertNotIn('bar.run("printf %s "', QML)
         self.assertIn("id: answerText", QML)
         self.assertIn("selectByMouse: true", QML)
@@ -195,7 +196,7 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn('updateSetting("displays", next)', QML)
         self.assertIn("return all", QML)
         self.assertNotIn('text: root.allMonitors ? "All monitors: On"', QML)
-        manifest = json.loads((Path(__file__).parents[1] / "plugin" / "manifest.json").read_text())
+        manifest = json.loads((Path(__file__).parents[1] / "manifest.json").read_text())
         self.assertEqual(manifest["barWidget"]["defaults"]["displays"], [])
 
     def test_open_starts_service_before_revealing_panel(self):
@@ -210,7 +211,7 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("captureLauncher.startDetached()", QML)
         self.assertIn('startScreenshot("smart")', QML)
         self.assertIn('path=$(omarchy capture screenshot "$mode" save)', CAPTURE_HELPER)
-        self.assertIn('wl-copy -- "$path"', CAPTURE_HELPER)
+        self.assertIn('printf \'%s\' "$path" | wl-copy', CAPTURE_HELPER)
         self.assertIn('notify_screenshot "$path" "File path copied · $path"', CAPTURE_HELPER)
         self.assertIn('text: "Select now · capture in 5 seconds"', QML)
         self.assertIn("id: screenshotDelayTimer", QML)
@@ -424,7 +425,8 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn('text: root.scratchpadDeletePending ? "Confirm delete" : "Delete note"', QML)
         self.assertIn('text: "New note"', QML)
         self.assertIn('text: "Note " + (root.scratchpadNoteIndex + 1)', QML)
-        self.assertIn("Saved locally. Use Markdown, bullets, file paths, or rough notes.", QML)
+        self.assertIn("Use Markdown, bullets, file paths, or rough notes.", QML)
+        self.assertIn('root.scratchpadSaveState === "error" ? root.scratchpadSaveError', QML)
         self.assertIn('Accessible.name: "Scratchpad text"', QML)
 
     def test_scratchpad_routes_dictation_and_screenshots_into_notes(self):
@@ -472,7 +474,7 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn('updateSetting("hiddenFromBar", true)', QML)
         self.assertGreaterEqual(QML.count('if (hiddenFromBar) updateSetting("hiddenFromBar", false)'), 3)
         self.assertIn("setting(\"openOnStartup\", false) === true && !hiddenFromBar", QML)
-        manifest = json.loads((Path(__file__).parents[1] / "plugin" / "manifest.json").read_text())
+        manifest = json.loads((Path(__file__).parents[1] / "manifest.json").read_text())
         self.assertFalse(manifest["barWidget"]["defaults"]["hiddenFromBar"])
 
     def test_history_separates_question_and_response(self):

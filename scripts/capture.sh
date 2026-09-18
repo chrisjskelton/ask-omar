@@ -28,7 +28,7 @@ deliver_file() {
     notify_shell appendScratchpad "$markdown"
     notify_screenshot "$path" "Added to Scratchpad · $path"
   else
-    wl-copy -- "$path"
+    printf '%s' "$path" | wl-copy
     notify_screenshot "$path" "File path copied · $path"
   fi
 }

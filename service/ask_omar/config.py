@@ -13,6 +13,46 @@ from pathlib import Path
 THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 
 
+def _section(raw: dict, name: str) -> dict:
+    value = raw.get(name, {})
+    if not isinstance(value, dict):
+        raise ValueError(f"Ask Omar config [{name}] must be a table.")
+    return value
+
+
+def _integer(section: dict, key: str, default: int, minimum: int) -> int:
+    value = section.get(key, default)
+    if isinstance(value, bool):
+        raise ValueError(f"Ask Omar config {key} must be an integer.")
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"Ask Omar config {key} must be an integer.") from error
+    return max(minimum, parsed)
+
+
+def _string(section: dict, key: str, default: str) -> str:
+    value = section.get(key, default)
+    if not isinstance(value, str):
+        raise ValueError(f"Ask Omar config {key} must be text.")
+    return value.strip()
+
+
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix="config.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
 def xdg_path(variable: str, fallback: str) -> Path:
     return Path(os.environ.get(variable, str(Path.home() / fallback))).expanduser()
 
@@ -48,20 +88,19 @@ class Config:
 
         with path.open("rb") as handle:
             raw = tomllib.load(handle)
-        agent = raw.get("agent", {})
-        conversation = raw.get("conversation", {})
-        history = raw.get("history", {})
+        agent = _section(raw, "agent")
+        conversation = _section(raw, "conversation")
+        history = _section(raw, "history")
         return cls(
-            backend=str(agent.get("backend", cls.backend)),
-            provider=str(agent.get("provider", cls.provider)).strip(),
-            model=str(agent.get("model", cls.model)).strip(),
-            thinking=str(agent.get("thinking", cls.thinking)).strip() or cls.thinking,
-            timeout_seconds=max(10, int(agent.get("timeout_seconds", cls.timeout_seconds))),
-            conversation_idle_minutes=max(
-                0,
-                int(conversation.get("idle_timeout_minutes", cls.conversation_idle_minutes)),
+            backend=_string(agent, "backend", cls.backend),
+            provider=_string(agent, "provider", cls.provider),
+            model=_string(agent, "model", cls.model),
+            thinking=_string(agent, "thinking", cls.thinking) or cls.thinking,
+            timeout_seconds=_integer(agent, "timeout_seconds", cls.timeout_seconds, 10),
+            conversation_idle_minutes=_integer(
+                conversation, "idle_timeout_minutes", cls.conversation_idle_minutes, 0
             ),
-            history_limit=max(1, int(history.get("limit", cls.history_limit))),
+            history_limit=_integer(history, "limit", cls.history_limit, 0),
         )
 
 
@@ -103,9 +142,7 @@ def update_agent_settings(
             f'thinking = "{updates.get("thinking", Config.thinking)}"\n'
             "timeout_seconds = 90\n"
         )
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
-        os.chmod(path, 0o600)
+        _atomic_write(path, text)
         return
 
     lines = text.splitlines(keepends=True)
@@ -150,9 +187,9 @@ def update_agent_settings(
         out.append("\n[agent]\n")
         flush_missing()
 
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    path.write_text("".join(out), encoding="utf-8")
-    os.chmod(path, 0o600)
+    updated = "".join(out)
+    tomllib.loads(updated)
+    _atomic_write(path, updated)
 
 
 def pi_agent_home() -> Path:

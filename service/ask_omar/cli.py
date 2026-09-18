@@ -24,10 +24,7 @@ def request(payload: dict[str, Any], start_service: bool = True) -> dict[str, An
             break
         with client:
             try:
-                # A command approval may remain open for up to five minutes.
-                # Keep the request transport alive long enough to receive the
-                # service's explicit allow, deny, or expiry result.
-                client.settimeout(360)
+                client.settimeout(5)
                 client.connect(str(path))
             except OSError as error:
                 last_error = error
@@ -42,6 +39,9 @@ def request(payload: dict[str, Any], start_service: bool = True) -> dict[str, An
                     continue
                 break
             try:
+                # Pi bounds its turn and each approval, but several approvals can
+                # outlast any fixed socket read timeout. Stop uses a separate request.
+                client.settimeout(None if payload.get("type") == "query" else 360)
                 client.sendall((json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8"))
                 chunks: list[bytes] = []
                 while True:

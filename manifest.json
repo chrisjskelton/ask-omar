@@ -7,7 +7,7 @@
   "description": "An always-available natural-language assistant for Omarchy",
   "kinds": ["bar-widget"],
   "entryPoints": {
-    "barWidget": "AskOmar.qml"
+    "barWidget": "plugin/AskOmar.qml"
   },
   "barWidget": {
     "displayName": "Ask Omar",

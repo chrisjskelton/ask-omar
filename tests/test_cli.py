@@ -49,6 +49,17 @@ class RequestRetryTests(unittest.TestCase):
         client.sendall.assert_called_once()
         start.assert_not_called()
 
+    def test_query_waits_without_fixed_read_deadline_for_delayed_approvals(self):
+        client = Mock()
+        client.__enter__ = Mock(return_value=client)
+        client.__exit__ = Mock(return_value=False)
+        client.recv.return_value = b'{"ok":true}\n'
+        with patch("ask_omar.cli.socket.socket", return_value=client):
+            result = request({"type": "query", "query": "run two approved commands"})
+        self.assertTrue(result["ok"])
+        self.assertEqual(client.settimeout.call_args_list[0].args, (5,))
+        self.assertEqual(client.settimeout.call_args_list[1].args, (None,))
+
 
 class SetupReportTests(unittest.TestCase):
     @staticmethod

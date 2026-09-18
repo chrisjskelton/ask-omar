@@ -1,175 +1,143 @@
 # Ask Omar
 
-`0.1.0`
+**A desktop agent in your Omarchy bar.**
 
-**Ask Omar is one box in the Omarchy top bar. Behind it is an agent that can
-actually use the computer. You ask for what you want; it works out how.**
+Ask a question, act on a desktop task, or keep the notes you carry between sessions—without opening another terminal. Built for Omarchy, powered by [Pi](https://pi.dev).
 
-I've gotten kinda hooked on Omarchy. It's becoming the machine I do serious work
-on.
+**Experimental 0.1.0.** Runs with your user permissions. The command guard is a convenience brake, not a sandbox. Agent requests need Pi and a connected model provider; notes and capture do not.
 
-It feels agent-first. The agent has become the interface, rather than another app
-you open alongside all the other apps and commands you still have to learn.
+![Ask Omar completing a desktop request](docs/media/ask-omar-topbar.png)
 
-Ask Omar started as a way to help me move over from macOS. It sat in the top bar,
-always open, so I could ask how Omarchy worked or just ask it to do something for
-me.
+[Watch the demo](https://chrisjskelton.github.io/ask-omar/) · [Releases](https://github.com/chrisjskelton/ask-omar/releases) · [Security](SECURITY.md)
 
-Then it started filling other gaps in how I work with agents: somewhere to keep
-the notes and text I carry between sessions, and quick capture for what I want an
-agent to see.
+## What it does
 
-Somewhere along the way it stopped being an onboarding aid. It became my front
-door into working with the computer.
+- **Ask, then follow up.** Get help with Omarchy or ask the agent to carry out a desktop task. Follow-ups share a conversation until **New**, a restart, or the next request after 30 idle minutes.
+- **Keep a Scratchpad.** Local notes for paths, prompts and half-written thoughts. Notes are not automatically added to AI prompts.
+- **Capture and dictate.** Screenshot/recording shortcuts put a file path on your clipboard or attach a screenshot to a note. Optional [Voxtype](https://voxtype.io) dictation makes a draft; you choose when to send it.
+- **Revisit answers.** Read recent questions and answers in Settings. Opening a saved answer does not restart that conversation.
 
-![Ask Omar working on a request](docs/media/ask-omar-topbar.png)
+Try “What's the shortcut to move a window to workspace 2?” or a bounded task such as “Sort the example files in this folder by type.” The agent can use `read`, `grep`, `find`, `ls` and `bash`. Results and available actions depend on your model and installed tools.
 
-Ask Omar can handle almost everything I want to do on a computer. I gave it the
-privileges it needs to do real work, including the ability to request root
-access, because those are no more than the privileges I already give an AI agent
-in a terminal.
+## Requirements
 
-Omarchy lets me make that call. On my MacBook I don't get to. Apple decides, and
-its reasons are good ones.
+This is for **Omarchy Quattro (4.x), with its Quickshell plugin system**. The release was tested locally with Omarchy **4.0.3-1**, Pi **0.85.1**, Python **3.14.7** and Node **26.8.1**. Other combinations are not yet certified.
 
-But it's my computer. I'd rather decide for myself.
+- Python **3.11+**, Node with native TypeScript support (CI uses **22.18.0**), `make` and `git`.
+- Omarchy's shell, plugin commands and capture/notification helpers; a working systemd user session.
+- `wl-copy`, `jq`, `grim` and the capture dependencies supplied by Omarchy. Voxtype is optional.
+- For AI: install Pi separately and connect a provider inside Pi. Ask Omar does not install Pi, provide a login flow or store separate provider credentials. Model use follows your provider's access and pricing.
 
-That choice is also why Omarchy is turning into my work machine. The apps that
-used to crowd my workflow are slipping away, because an agent can do more of the
-work directly.
-
-The interface is deliberately simple. It got there through daily use: I kept what
-worked and reworked whatever kept annoying me.
-
-I still use Pi in a terminal for real work. Omar is for everything I wouldn't
-have opened a terminal for. I'm not a developer by background, and Omar is built
-so that doesn't matter.
-
-## What it does today
-
-You type what you want. Most of mine are questions I'd otherwise have Googled:
-*what's the shortcut to send a window to the next workspace?* Some are jobs:
-*sort my Downloads folder by file type.* Some are help with whatever is already
-open in front of me: *read what's on screen and tell me what this error wants.*
-
-Omar answers, or more importantly can just do it for me, using `read`, `grep`,
-`find`, `ls`, and `bash`. Follow-ups stay in the same conversation until you
-press **New**, or it sits idle for thirty minutes.
-
-Click the bar and a compact panel opens with **New**, settings, and close, ready
-for the next ask. When Omar answers, you see his reply (not your question), with
-**Reply** underneath and **Show chat** if you want the full thread. Bounce away
-and back within about thirty seconds and that reply is still there; after that
-the panel goes compact again.
-
-- **Scratchpad.** Auto-saving notes doing two jobs: somewhere to write something
-  down fast, and somewhere to keep the paths, prompts, and part-written text you
-  carry between agent sessions. Local, and it doesn't add itself to your prompts.
-  ([screenshot](#scratchpad))
-- **Capture.** Left-click the camera for Omarchy's picker; right-click for a
-  region, a window, the whole screen, a delay, or a silent recording. You get the
-  file path rather than the image, so you can paste it into Omar or a terminal.
-  ([screenshot](#capture))
-- **Dictation.** Click to toggle, or hold to talk. Either way you get a draft,
-  and nothing is sent until you send it. Runs on Omarchy's
-  [Voxtype](https://voxtype.io), so the mic stays inactive until Dictation is
-  installed. The mic is the left icon in that same bar group.
-- **Past answers.** In Settings. Questions and answers are kept locally, the
-  newest hundred by default. Opening one is just reading; it does not reopen
-  that conversation.
-
-## What it needs
-
-Omarchy, and [Pi](https://pi.dev). Ask Omar runs Pi headless in the background as
-its engine, so Pi has to be installed and signed in to a provider first. It
-doesn't install Pi and never handles your credentials.
-
-With no provider and model set, first setup copies Pi's own defaults from
-`~/.pi/agent/settings.json` if they are there, and otherwise takes the first
-model `pi --list-models` reports. You can pick another in Settings from the
-models Pi lists. Reasoning starts at `low`.
-
-Scratchpad and capture need no Pi at all.
-
-## Privacy
-
-No telemetry. Past answers, Scratchpad, configuration, and captures stay on your
-machine. What leaves: your asks and whatever context Pi needs go to your hosted
-model provider, and a `bash` command can use the network.
-
-Omar is not a sandbox. It runs as you. Treat it like a terminal agent with a
-friendly front door: anything that can already act as your user can read local
-state or approve a pending command. Uninstalling leaves Pi, your provider
-sign-ins, and Ask Omar's configuration and state in place.
+The installer checks dependencies before changing files. It does not request root or change packaged Omarchy files.
 
 ## Install
 
-If you already work with an AI agent, point it at this page and let it do the
-install. Otherwise:
+Read the permissions below first, then clone and inspect the release:
 
 ```bash
-git clone https://github.com/chrisjskelton/ask-omar.git
+git clone --branch v0.1.0 https://github.com/chrisjskelton/ask-omar.git
 cd ask-omar
 make install
 ```
 
-The installer writes only to user locations: a systemd user service, the Omarchy
-plugin, and Apps launchers. No `sudo`, and nothing under `/usr/share/omarchy` is
-touched.
+This installs user-owned files, enables the companion user service, adds the widget and restarts the Omarchy shell to load it. Your existing Ask Omar configuration is preserved.
 
-Then open it and check it:
+For AI requests, run `pi`, use `/login` to connect your provider, then:
 
 ```bash
-omarchy-shell ask-omar open
 ask-omar setup
+omarchy-shell ask-omar open
 ```
 
-`setup` tells you whether Pi is installed and signed in, and what to do if it
-isn't. An agent can install Pi; only you can sign in to the provider.
+First setup uses Pi's default provider/model, or the first model Pi lists. You can choose another in Settings. Don't paste passwords, tokens or sign-in codes into Omar.
 
-## Access, `sudo`, and the guard
+### Omarchy plugin installer / marketplace
 
-Read this part properly.
+The repository contains a root plugin manifest. Omarchy can install the widget with:
 
-Omar runs as you, with your permissions. **It is not sandboxed.**
+```bash
+omarchy plugin add https://github.com/chrisjskelton/ask-omar.git --enable
+```
 
-It can request `sudo`. With the default guard on, a recognised command pauses for
-**Allow once / Deny**; approve and authenticate, and that command runs with full
-root privileges. The guard hard-blocks a short list of catastrophic patterns
-(including `rm -rf /` and close variants, `dd of=/dev/…`, `mkfs`, fork bombs,
-`curl|bash`, and attempts to rewrite Ask Omar's own guard) and asks for one-time
-approval on known risky ones. Restart and shutdown are confirmable with a warning
-rather than forbidden. Setting `"enabled": false` or emptying the hard-block list
-in `guard.json` does not turn the brake off.
+**One manual step is required:** the widget needs its Python companion service. Installing or enabling the widget never runs a setup script automatically. From the installed checkout:
 
-The guard matches known bash text patterns. That is all it does. It cannot catch
-every danger, a differently constructed command can walk around it, and it is not
-a sandbox or a security boundary. Grant this access on the same terms you would
-grant an agent a terminal.
+```bash
+cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
+make setup
+```
 
-Omar does not watch your screen or attach your window title to every request.
-Explicit tools inspect windows or capture pixels only when a task you ask for
-needs it.
+Then run `ask-omar setup`. A marketplace listing is discovery, not a security certification. The plugin ID remains `ask-omar.assistant` for existing installations.
 
-## Status
+## Permissions and the guard
 
-Version `0.1.0`, Omarchy only. I use it every day and it will keep
-changing. Issues and pull requests welcome. Built on Omarchy, Pi, and Voxtype.
-MIT licensed.
+Omar runs as you. It can read your files, run programs and use the network. A task may request administrator access; whether that works depends on your host's authentication and privilege policy.
 
-## What's next
+Recognized risky commands pause for **Allow once / Deny**. Some known catastrophic patterns are blocked. Stop cancels the active task, but **does not undo actions already completed**.
 
-The next iteration extends that doorway into a sandboxed work zone: Ask Omar as
-the launchpad, where you choose a repository, bring in the right skills and
-context, and let an agent do real work in an isolated, portable environment. None
-of it is in the build yet.
+The guard checks command text patterns. It cannot detect every dangerous command or isolate the agent from credentials. Other processes running as your user share access to local state and the service. Grant access on the same terms as a terminal agent; this release is not intended for unattended sensitive workloads.
 
-Omar stays the front door. The work gets a workspace to make it happen.
+## Privacy and retention
+
+No Ask Omar telemetry is implemented. Notes, drafts and recent answers are stored locally. Notes and captures are not automatically attached to requests. Your requests and any context the agent reads for the task may be sent through Pi to your chosen provider. Explicit web searches open Google; opened sites and commands can use the network. Provider-side retention is governed by your provider and account settings.
+
+| Data | Retention |
+|---|---|
+| Recent questions and answers | Newest 100 by default. Clear in Settings, or set `[history] limit = 0` to disable storage. |
+| Draft | Up to 2,000 characters; expires when read after 24 hours. |
+| Scratchpad | Up to 20 notes of 20,000 characters each. Over-limit saves are rejected visibly. |
+| Attached screenshots | Private local copies. Removing a note does not remove its attachment files. |
+| Original captures | Stay in Omarchy's capture location. |
+| Conversation context | In Pi memory; the next request after 30 idle minutes starts fresh. |
+| Agent log | Private local stderr log, trimmed at startup. |
+
+State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `${XDG_CONFIG_HOME:-~/.config}/ask-omar`. Local data is protected by user permissions, not encrypted by Ask Omar. Clipboard managers may retain copied content. Answers are displayed as plain text so remote images in model output are not automatically loaded.
+
+## Update and remove
+
+For a release checkout, inspect the new release notes, fetch its tag, check it out, then run `make install` again. For the marketplace route, update the plugin through Omarchy, then run `make setup` again from its installed directory to update the companion service too.
+
+```bash
+make uninstall
+```
+
+Uninstall removes the widget, service and launchers. It preserves Pi, its sign-ins, and your Ask Omar configuration/state. To **permanently delete Ask Omar's saved data** after uninstalling:
+
+```bash
+rm -rf -- "${XDG_CONFIG_HOME:-$HOME/.config}/ask-omar" \
+  "${XDG_STATE_HOME:-$HOME/.local/state}/ask-omar"
+```
+
+Remove original captures separately if wanted. Local deletion does not erase provider-side data or clipboard history. If you set `ASK_OMAR_CONFIG`, manage that custom config file separately.
+
+## Troubleshooting
+
+- **Widget says backend missing:** run `make setup` from its installed checkout, then `ask-omar setup`.
+- **Pi missing or disconnected:** install Pi, sign in within `pi` using `/login`, and rerun `ask-omar setup`.
+- **Service problem:** run `systemctl --user status ask-omar.service` and `journalctl --user -u ask-omar.service -n 40`. Inspect logs for private content before sharing.
+- **No mic:** install and configure Omarchy Dictation/Voxtype. The mic is optional.
+- **Save error:** keep the editor open, correct the length or storage problem and retry. Don't discard unsaved text.
+- **Model setting problem:** choose a model Pi lists. Pi's auth/RPC interface must support the flags used by this release.
+
+## How it fits together
+
+```text
+Omarchy widget → local CLI → private Unix socket → Python user service → Pi → provider
+                                             ↘ local notes and history
+```
+
+The Python service uses the standard library. Pi provides the agent loop and provider integration. Omarchy provides the desktop and capture tools; Voxtype provides optional dictation.
+
+## Why I built it
+
+I got hooked on Omarchy while moving over from macOS. Ask Omar began as a small place in the top bar to ask how the desktop worked. Through daily use it grew into a home for the quick questions, notes and captures I carry between agent sessions.
+
+I still use Pi in a terminal for longer sessions. Omar is for the small desktop jobs I want to start without opening one.
+
+This is a personal project and it will keep changing. [Issues and contributions](CONTRIBUTING.md) are welcome. See the [roadmap](docs/ROADMAP.md) for ideas that are not yet implemented.
 
 ## Gallery
 
-<p align="center">
-<a id="scratchpad" href="#scratchpad"><img src="docs/media/ask-omar-scratchpad.png" alt="Scratchpad open from the bar" width="48%" /></a>
-&nbsp;
-<a id="capture" href="#capture"><img src="docs/media/ask-omar-capture.png" alt="Capture menu from the camera button" width="48%" /></a>
-</p>
+![Scratchpad with example notes](docs/media/ask-omar-scratchpad.png)
+![Capture choices](docs/media/ask-omar-capture.png)
+
+MIT licensed. Built on Omarchy, Pi and Voxtype; no affiliation or endorsement implied.

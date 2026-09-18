@@ -97,6 +97,7 @@ BarWidget {
   property string healthModel: ""
   property string healthThinking: ""
   property bool healthChecked: false
+  property bool backendInstalled: true
   property string recapText: ""
   property bool showSlowHint: false
   property var pendingConfirmation: null
@@ -127,7 +128,17 @@ BarWidget {
   property string agentSaveMessage: ""
   property bool restarting: false
   property bool quitting: false
+  property bool quitRequested: false
+  property string draftSaveState: "saved"
+  property string draftSaveError: ""
+  property int draftVersion: 0
+  property int savedDraftVersion: 0
+  property string scratchpadSaveState: "saved"
+  property string scratchpadSaveError: ""
+  property int scratchpadVersion: 0
+  property int savedScratchpadVersion: 0
   property bool hideFromBarPending: false
+  property bool hideAfterQuit: false
   property bool micPointerActive: false
   property string micPointerInitialState: "idle"
   property double micPointerStartedAt: 0
@@ -201,6 +212,7 @@ BarWidget {
     Keys.onSpacePressed: if (enabled) clicked()
 
     Text {
+      textFormat: Text.PlainText
       id: captureLabel
       anchors.right: parent.right
       anchors.rightMargin: Style.space(10)
@@ -251,6 +263,7 @@ BarWidget {
     Keys.onSpacePressed: if (focusable) clicked()
 
     Text {
+      textFormat: Text.PlainText
       anchors.centerIn: parent
       text: micButton.iconText
       color: micButton.enabled ? micButton.foreground : Qt.darker(micButton.foreground, 2.0)
@@ -616,23 +629,56 @@ BarWidget {
   }
 
   function quitApplication() {
+    quitRequested = true
+    draftSaveTimer.stop()
+    scratchpadSaveTimer.stop()
+    flushPendingSaves()
+  }
+
+  function flushPendingSaves() {
+    if (!quitRequested) return
+    if (draftSaveState === "error" || scratchpadSaveState === "error") {
+      quitRequested = false
+      hideAfterQuit = false
+      if (!opened) {
+        opened = true
+        updateGeometry()
+      }
+      if (scratchpadSaveState === "error") scratchpadMode = true
+      else errorText = draftSaveError
+      return
+    }
+    if (draftSaveProcess.running || scratchpadSaveProcess.running) return
+    if (draftVersion !== savedDraftVersion) {
+      saveDraft()
+      return
+    }
+    if (scratchpadVersion !== savedScratchpadVersion) {
+      saveScratchpad()
+      return
+    }
+    finishQuit()
+  }
+
+  function finishQuit() {
+    quitRequested = false
     quitting = true
     openPending = false
     settingsPending = false
     historyPending = false
     if (pendingConfirmation) respondToConfirmation("Deny")
     else clearPendingConfirmation()
-    draftSaveTimer.stop()
-    scratchpadSaveTimer.stop()
     activityTimer.stop()
     if (healthProcess.running) healthProcess.running = false
     if (draftLoadProcess.running) draftLoadProcess.running = false
-    if (draftSaveProcess.running) draftSaveProcess.running = false
     if (scratchpadLoadProcess.running) scratchpadLoadProcess.running = false
-    if (scratchpadSaveProcess.running) scratchpadSaveProcess.running = false
     quitProcess.command = ["systemctl", "--user", "stop", "ask-omar.service"]
     quitProcess.running = true
     close(false)
+    if (hideAfterQuit) {
+      hideAfterQuit = false
+      updateSetting("hiddenFromBar", true)
+    }
   }
 
   function hideFromBar() {
@@ -640,8 +686,8 @@ BarWidget {
       hideFromBarPending = true
       return
     }
+    hideAfterQuit = true
     quitApplication()
-    updateSetting("hiddenFromBar", true)
   }
 
   function restartApplication() {
@@ -705,9 +751,30 @@ BarWidget {
     proc.running = true
   }
 
+  // Python's len() counts a Unicode code point once; QML string.length counts
+  // each half of an astral character separately. Match the backend limits.
+  function characterCount(value) {
+    var text = String(value || "")
+    var count = 0
+    for (var i = 0; i < text.length; i++) {
+      var first = text.charCodeAt(i)
+      if (first >= 0xd800 && first <= 0xdbff && i + 1 < text.length) {
+        var second = text.charCodeAt(i + 1)
+        if (second >= 0xdc00 && second <= 0xdfff) i++
+      }
+      count++
+    }
+    return count
+  }
+
   function submit(text) {
     var value = String(text || "").trim()
     if (!value || busy || queryProcess.running) return
+    if (characterCount(value) > 2000) {
+      errorText = "Question exceeds 2,000 characters. Shorten it before sending."
+      resultVisible = true
+      return
+    }
     if (aiUnavailable()) {
       resultVisible = conversationTurns.length > 0
       panelView = "chat"
@@ -742,7 +809,7 @@ BarWidget {
     replyExpanded = false
     // Don't let a stale draft reappear in the bar while Working.
     draftSaveTimer.stop()
-    startStdinCommand(draftSaveProcess, ["ask-omar", "draft", "--stdin"], "")
+    saveDraft()
     requestState = "working"
     activityText = "Thinking"
     activityDots = 0
@@ -796,8 +863,7 @@ BarWidget {
     var value = selection !== "" ? selection : responseText
     copyFailed = false
     copied = false
-    copyProcess.command = ["wl-copy", "--", value]
-    copyProcess.running = true
+    startStdinCommand(copyProcess, ["wl-copy"], value)
   }
 
   function newConversation() {
@@ -992,12 +1058,93 @@ BarWidget {
     try {
       var result = JSON.parse(String(raw || "").trim())
       if (!result.ok) return
+      if (scratchpadVersion !== 0) return
       restoringScratchpad = true
       scratchpadNotes = result.notes || [""]
       scratchpadNoteIndex = Math.min(scratchpadNoteIndex, scratchpadNotes.length - 1)
       scratchpadText = String(scratchpadNotes[scratchpadNoteIndex] || "")
       restoringScratchpad = false
     } catch (error) { }
+  }
+
+  function saveDraft() {
+    if (draftSaveProcess.running) return
+    if (characterCount(queryText) > 2000) {
+      draftSaveState = "error"
+      draftSaveError = "Draft exceeds 2,000 characters. Shorten it to save."
+      flushPendingSaves()
+      return
+    }
+    draftSaveState = "pending"
+    draftSaveError = ""
+    draftSaveProcess.saveVersion = draftVersion
+    draftSaveProcess.ackReceived = false
+    startStdinCommand(draftSaveProcess, ["ask-omar", "draft", "--stdin"], queryText)
+  }
+
+  function saveScratchpad() {
+    if (scratchpadSaveProcess.running) return
+    if (scratchpadNotes.length > 20 || scratchpadNotes.some(function(note) { return characterCount(note) > 20000 })) {
+      scratchpadSaveState = "error"
+      scratchpadSaveError = "Use at most 20 notes of 20,000 characters each. Changes are still in this window."
+      flushPendingSaves()
+      return
+    }
+    scratchpadSaveState = "pending"
+    scratchpadSaveError = ""
+    scratchpadSaveProcess.saveVersion = scratchpadVersion
+    scratchpadSaveProcess.ackReceived = false
+    startStdinCommand(scratchpadSaveProcess, ["ask-omar", "scratchpad-notes-save", "--stdin"], JSON.stringify(scratchpadNotes))
+  }
+
+  function handleSave(raw, kind, version) {
+    var result
+    try { result = JSON.parse(String(raw || "").trim()) }
+    catch (error) { result = { ok: false, error: "Could not read the save response." } }
+    var isDraft = kind === "draft"
+    var currentVersion = isDraft ? draftVersion : scratchpadVersion
+    if (result.ok === true) {
+      if (isDraft) {
+        savedDraftVersion = version
+        draftSaveState = version === currentVersion ? "saved" : "pending"
+        draftSaveError = ""
+      } else {
+        savedScratchpadVersion = version
+        scratchpadSaveState = version === currentVersion ? "saved" : "pending"
+        scratchpadSaveError = ""
+      }
+      if (version !== currentVersion) Qt.callLater(function() {
+        if (isDraft) saveDraft()
+        else saveScratchpad()
+      })
+    } else if (version === currentVersion) {
+      if (isDraft) {
+        draftSaveState = "error"
+        draftSaveError = String(result.error || "Could not save the draft.")
+      } else {
+        scratchpadSaveState = "error"
+        scratchpadSaveError = String(result.error || "Could not save scratchpad notes.")
+      }
+    } else Qt.callLater(function() {
+      if (isDraft) saveDraft()
+      else saveScratchpad()
+    })
+    Qt.callLater(function() { flushPendingSaves() })
+  }
+
+  function saveProcessExited(kind, version) {
+    var isDraft = kind === "draft"
+    var proc = isDraft ? draftSaveProcess : scratchpadSaveProcess
+    if (proc.saveVersion !== version) return
+    if (!proc.ackReceived) {
+      handleSave("", kind, version)
+      return
+    }
+    if (isDraft && draftSaveState === "pending" && draftVersion !== savedDraftVersion)
+      saveDraft()
+    else if (!isDraft && scratchpadSaveState === "pending" && scratchpadVersion !== savedScratchpadVersion)
+      saveScratchpad()
+    flushPendingSaves()
   }
 
   function selectScratchpadNote(index) {
@@ -1013,6 +1160,9 @@ BarWidget {
     if (scratchpadNotes.length >= 20) return
     scratchpadNotes = scratchpadNotes.concat([""])
     selectScratchpadNote(scratchpadNotes.length - 1)
+    scratchpadVersion++
+    scratchpadSaveState = "pending"
+    scratchpadSaveError = ""
     scratchpadSaveTimer.restart()
   }
 
@@ -1030,6 +1180,9 @@ BarWidget {
       scratchpadNotes = scratchpadNotes.slice()
       selectScratchpadNote(Math.min(scratchpadNoteIndex, scratchpadNotes.length - 1))
     }
+    scratchpadVersion++
+    scratchpadSaveState = "pending"
+    scratchpadSaveError = ""
     scratchpadSaveTimer.restart()
   }
 
@@ -1039,8 +1192,7 @@ BarWidget {
     var value = selection !== "" ? selection : scratchpadText
     copyFailed = false
     copied = false
-    copyProcess.command = ["wl-copy", "--", value]
-    copyProcess.running = true
+    startStdinCommand(copyProcess, ["wl-copy"], value)
   }
 
   function checkHealth() {
@@ -1181,7 +1333,7 @@ BarWidget {
 
   function scratchpadImages() {
     var images = []
-    var matcher = /!\[Screenshot\]\(<(file:\/\/[^>]+)>\)/g
+    var matcher = /!\[Screenshot\]\(<(file:\/\/\/[^>]+)>\)/g
     var match
     while ((match = matcher.exec(scratchpadText)) !== null) images.push(match[1])
     return images
@@ -1424,11 +1576,19 @@ BarWidget {
     }
   }
 
-  onQueryTextChanged: if (!restoringDraft && !quitting) draftSaveTimer.restart()
+  onQueryTextChanged: if (!restoringDraft && !quitting) {
+    draftVersion++
+    draftSaveState = "pending"
+    draftSaveError = ""
+    draftSaveTimer.restart()
+  }
   onScratchpadTextChanged: {
     if (!restoringScratchpad && !quitting) {
       scratchpadNotes[scratchpadNoteIndex] = scratchpadText
       scratchpadNotes = scratchpadNotes.slice()
+      scratchpadVersion++
+      scratchpadSaveState = "pending"
+      scratchpadSaveError = ""
       scratchpadSaveTimer.restart()
     }
   }
@@ -1439,6 +1599,7 @@ BarWidget {
   }
 
   Component.onCompleted: {
+    backendCheckProcess.running = true
     draftLoadProcess.command = ["ask-omar", "get-draft"]
     draftLoadProcess.running = true
     loadScratchpad()
@@ -1542,9 +1703,31 @@ BarWidget {
   }
 
   Process {
+    id: backendCheckProcess
+    command: ["sh", "-c", "command -v ask-omar >/dev/null 2>&1"]
+    onExited: function(exitCode, exitStatus) {
+      root.backendInstalled = exitCode === 0
+      if (!root.backendInstalled)
+        root.errorText = "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
+    }
+  }
+
+  Process {
     id: draftSaveProcess
     property string pendingStdin: ""
-    stdout: StdioCollector { waitForEnd: true }
+    property int saveVersion: 0
+    property bool ackReceived: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        draftSaveProcess.ackReceived = true
+        root.handleSave(text, "draft", draftSaveProcess.saveVersion)
+      }
+    }
+    onExited: function(exitCode, exitStatus) {
+      var version = draftSaveProcess.saveVersion
+      Qt.callLater(function() { root.saveProcessExited("draft", version) })
+    }
     onStarted: {
       write(pendingStdin)
       pendingStdin = ""
@@ -1563,7 +1746,19 @@ BarWidget {
   Process {
     id: scratchpadSaveProcess
     property string pendingStdin: ""
-    stdout: StdioCollector { waitForEnd: true }
+    property int saveVersion: 0
+    property bool ackReceived: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        scratchpadSaveProcess.ackReceived = true
+        root.handleSave(text, "scratchpad", scratchpadSaveProcess.saveVersion)
+      }
+    }
+    onExited: function(exitCode, exitStatus) {
+      var version = scratchpadSaveProcess.saveVersion
+      Qt.callLater(function() { root.saveProcessExited("scratchpad", version) })
+    }
     onStarted: {
       write(pendingStdin)
       pendingStdin = ""
@@ -1597,6 +1792,12 @@ BarWidget {
 
   Process {
     id: copyProcess
+    property string pendingStdin: ""
+    onStarted: {
+      write(pendingStdin)
+      pendingStdin = ""
+      stdinEnabled = false
+    }
     onExited: function(exitCode, exitStatus) {
       root.copyFailed = exitCode !== 0
       root.copied = exitCode === 0
@@ -1733,6 +1934,10 @@ BarWidget {
       root.settingsPending = false
       root.historyPending = false
       root.reveal()
+      if (exitCode !== 0)
+        root.errorText = root.backendInstalled
+          ? "Ask Omar could not start its service. Check the installation, or run make setup from its source directory."
+          : "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
       if (showSettings) {
         root.settingsExpanded = true
         root.checkHealth()
@@ -1790,7 +1995,7 @@ BarWidget {
         draftSaveTimer.restart()
         return
       }
-      startStdinCommand(draftSaveProcess, ["ask-omar", "draft", "--stdin"], root.queryText)
+      root.saveDraft()
     }
   }
 
@@ -1803,11 +2008,7 @@ BarWidget {
         scratchpadSaveTimer.restart()
         return
       }
-      startStdinCommand(
-        scratchpadSaveProcess,
-        ["ask-omar", "scratchpad-notes-save", "--stdin"],
-        JSON.stringify(root.scratchpadNotes),
-      )
+      root.saveScratchpad()
     }
   }
 
@@ -1832,12 +2033,12 @@ BarWidget {
     radius: Style.cornerRadius
 
     Text {
+      textFormat: Text.PlainText
       anchors.left: parent.left
       anchors.leftMargin: Style.space(10)
       anchors.right: barMic.left
       anchors.rightMargin: Style.space(6)
       anchors.verticalCenter: parent.verticalCenter
-      textFormat: Text.PlainText
       text: (!root.busy && root.queryText !== "") ? root.queryText : "Ask Omar…"
       elide: Text.ElideRight
       color: (!root.busy && root.queryText !== "") ? root.foreground : Qt.darker(root.foreground, 1.55)
@@ -1862,6 +2063,7 @@ BarWidget {
       color: "transparent"
 
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: root.micState === "transcribing" ? "󰔟" : "󰍬"
         color: !root.voxtypeAvailable ? Qt.darker(root.foreground, 1.8) : (root.micState === "recording" ? root.accent : root.foreground)
@@ -1886,6 +2088,7 @@ BarWidget {
       color: "transparent"
 
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: "󰎚"
         color: root.foreground
@@ -1908,6 +2111,7 @@ BarWidget {
       color: "transparent"
 
       Text {
+        textFormat: Text.PlainText
         anchors.centerIn: parent
         text: root.recordingActive ? "■" : "󰄀"
         color: root.recordingActive ? root.accent : root.foreground
@@ -2142,6 +2346,7 @@ BarWidget {
           spacing: Style.space(6)
 
           Text {
+            textFormat: Text.PlainText
             id: headerTitle
             width: Math.max(0, parent.width - headerActions.width - parent.spacing)
             anchors.verticalCenter: parent.verticalCenter
@@ -2262,6 +2467,30 @@ BarWidget {
           }
         }
 
+        Text {
+          textFormat: Text.PlainText
+          visible: !root.settingsExpanded && !root.historyExpanded
+            && (root.queryText !== "" || root.draftSaveState === "error" || root.quitRequested)
+          width: parent.width
+          text: root.quitRequested ? "Saving before quit…"
+            : root.draftSaveState === "error" ? root.draftSaveError
+            : root.draftSaveState === "pending" ? "Draft save pending…" : "Draft saved locally."
+          wrapMode: Text.WordWrap
+          color: root.draftSaveState === "error" ? root.accent : Qt.darker(root.foreground, 1.55)
+          font.family: root.bar ? root.bar.fontFamily : Style.font.family
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        Button {
+          visible: root.draftSaveState === "error" && !root.settingsExpanded && !root.historyExpanded
+          text: "Retry draft save"
+          focusable: true
+          bordered: true
+          foreground: root.foreground
+          accent: root.accent
+          onClicked: root.saveDraft()
+        }
+
         Flickable {
           id: resultFlickable
           width: parent.width
@@ -2296,6 +2525,7 @@ BarWidget {
             spacing: Style.space(8)
 
             Text {
+              textFormat: Text.PlainText
               width: Math.max(0, parent.width - retryButton.implicitWidth - parent.spacing)
               text: root.errorText
               wrapMode: Text.WordWrap
@@ -2323,6 +2553,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.retryWarning !== ""
             width: parent.width
             text: root.retryWarning
@@ -2352,6 +2583,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "AI connection"
               color: root.foreground
@@ -2362,6 +2594,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: root.healthTitle()
                 + (root.healthProvider !== "" ? " · " + root.healthProvider : "")
@@ -2375,6 +2608,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: root.healthLabel()
               wrapMode: Text.WordWrap
@@ -2399,6 +2633,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.aiSettingsHelpExpanded
               width: parent.width
               text: root.modelsLoading
@@ -2414,6 +2649,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.aiSettingsHelpExpanded
               width: parent.width
               text: "Model"
@@ -2445,6 +2681,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.aiSettingsHelpExpanded && root.availableModels.length === 0 && !root.modelsLoading
               width: parent.width
               text: "Current model: " + (root.healthModel !== "" ? root.healthModel : "unset")
@@ -2457,6 +2694,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.aiSettingsHelpExpanded
               width: parent.width
               text: "Reasoning"
@@ -2491,6 +2729,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.aiSettingsHelpExpanded && root.agentSaveMessage !== ""
               width: parent.width
               text: root.agentSaveMessage
@@ -2527,6 +2766,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "Safety"
               color: root.foreground
@@ -2537,6 +2777,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "Omar works directly on this computer. There is no sandbox separating it from your files. The guard stops or asks about some known risky commands, but it cannot recognise every dangerous command."
               wrapMode: Text.WordWrap
@@ -2556,6 +2797,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: root.shownOnSummary()
               wrapMode: Text.WordWrap
@@ -2628,6 +2870,7 @@ BarWidget {
               spacing: Style.space(7)
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: root.healthTitle()
                 color: root.foreground
@@ -2638,6 +2881,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: root.healthLabel()
                 wrapMode: Text.WordWrap
@@ -2678,6 +2922,7 @@ BarWidget {
               spacing: Style.space(7)
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: "Omar works directly on this computer"
                 color: root.foreground
@@ -2688,6 +2933,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: "Omar works directly on this computer. There is no sandbox separating it from your files. The guard stops or asks about some known risky commands, but it cannot recognise every dangerous command."
                 wrapMode: Text.WordWrap
@@ -2734,6 +2980,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               width: Math.max(0, parent.width
                 - (backToSettingsListButton.visible ? backToSettingsListButton.implicitWidth + parent.spacing : 0)
                 - (clearHistoryButton.visible ? clearHistoryButton.implicitWidth + parent.spacing : 0))
@@ -2772,6 +3019,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.historyExpanded && !root.historyItemOpen && root.historyEntries.length === 0 && !historyProcess.running
             width: parent.width
             text: root.conversationTurns.length > 0
@@ -2788,6 +3036,7 @@ BarWidget {
             spacing: Style.space(8)
 
             Text {
+              textFormat: Text.PlainText
               width: parent.width
               text: "You asked"
               color: Qt.darker(root.foreground, 1.55)
@@ -2812,6 +3061,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 id: historyAskBody
                 anchors.left: parent.left
                 anchors.right: parent.right
@@ -2830,7 +3080,7 @@ BarWidget {
               id: historyAnswerBody
               width: parent.width
               text: root.historyItemResponse
-              textFormat: TextEdit.MarkdownText
+              textFormat: TextEdit.PlainText
               wrapMode: TextEdit.Wrap
               readOnly: true
               selectByMouse: true
@@ -2882,6 +3132,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 id: timeLabel
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.relativeTime(modelData.at)
@@ -2893,6 +3144,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.historyExpanded && !root.historyItemOpen && root.historyEntries.length > 0
             width: parent.width
             text: "Questions and answers saved on this machine. Opening one doesn't reopen the conversation."
@@ -2903,6 +3155,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.freshNotice && !root.busy && !root.historyExpanded && !root.settingsExpanded
             width: parent.width
             text: "New conversation. Omar has forgotten what came before."
@@ -2933,6 +3186,7 @@ BarWidget {
                 readonly property bool fromYou: String(turnRoot.modelData.role || "") === "you"
 
                 Text {
+                  textFormat: Text.PlainText
                   visible: root.threadExpanded
                   anchors.right: turnRoot.fromYou ? parent.right : undefined
                   anchors.left: turnRoot.fromYou ? undefined : parent.left
@@ -2969,7 +3223,7 @@ BarWidget {
                     anchors.top: parent.top
                     anchors.margins: Style.space(6)
                     text: String(turnRoot.modelData.text || "")
-                    textFormat: turnRoot.fromYou ? TextEdit.PlainText : TextEdit.MarkdownText
+                    textFormat: TextEdit.PlainText
                     wrapMode: TextEdit.WordWrap
                     readOnly: true
                     selectByMouse: true
@@ -3007,7 +3261,7 @@ BarWidget {
               width: parent.width
               height: 0
               text: root.responseText
-              textFormat: TextEdit.MarkdownText
+              textFormat: TextEdit.PlainText
               readOnly: true
               selectByMouse: true
               selectByKeyboard: true
@@ -3015,6 +3269,7 @@ BarWidget {
             }
 
             Text {
+              textFormat: Text.PlainText
               visible: root.busy && root.pendingConfirmation === null
               width: parent.width
               text: root.activityDisplay()
@@ -3039,6 +3294,7 @@ BarWidget {
               spacing: Style.space(6)
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: "Allow this command?"
                 color: root.accent
@@ -3049,6 +3305,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: {
                   var title = root.pendingConfirmation ? String(root.pendingConfirmation.title || "") : ""
@@ -3086,6 +3343,7 @@ BarWidget {
               }
 
               Text {
+                textFormat: Text.PlainText
                 width: parent.width
                 text: "On this computer · Allow once"
                 color: Qt.darker(root.foreground, 1.5)
@@ -3167,6 +3425,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.showReplyButton && root.recapText !== "" && !root.busy && !root.showChatToggle
             anchors.left: parent.left
             anchors.right: replyButton.left
@@ -3181,6 +3440,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             visible: root.showReplyButton && root.recapText !== "" && !root.busy && root.showChatToggle
             anchors.left: showChatButton.right
             anchors.leftMargin: Style.space(8)
@@ -3337,6 +3597,7 @@ BarWidget {
       radius: Style.cornerRadius
 
       Text {
+        textFormat: Text.PlainText
         anchors.left: parent.left
         anchors.leftMargin: Style.space(10)
         anchors.right: scratchpadToolbarMic.left
@@ -3445,6 +3706,7 @@ BarWidget {
           spacing: Style.space(6)
 
           Text {
+            textFormat: Text.PlainText
             width: Math.max(0, parent.width - scratchpadDeleteButton.implicitWidth
               - scratchpadCopyButton.width - parent.spacing * 2)
             anchors.verticalCenter: parent.verticalCenter
@@ -3504,6 +3766,7 @@ BarWidget {
           }
 
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: "Note " + (root.scratchpadNoteIndex + 1) + " of " + root.scratchpadNotes.length
             color: root.foreground
@@ -3540,8 +3803,9 @@ BarWidget {
         }
 
         Text {
+          textFormat: Text.PlainText
           width: parent.width
-          text: "Saved locally. Use Markdown, bullets, file paths, or rough notes."
+          text: "Use Markdown, bullets, file paths, or rough notes."
           wrapMode: Text.WordWrap
           color: Qt.darker(root.foreground, 1.45)
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3649,12 +3913,29 @@ BarWidget {
         }
 
         Text {
+          textFormat: Text.PlainText
           id: scratchpadHelp
           width: parent.width
-          text: root.copied ? "Copied." : "Changes save automatically."
-          color: Qt.darker(root.foreground, 1.6)
+          text: !root.backendInstalled
+            ? "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
+            : root.scratchpadSaveState === "error" ? root.scratchpadSaveError
+            : root.quitRequested ? "Saving before quit…"
+            : root.scratchpadSaveState === "pending" ? "Scratchpad save pending…"
+            : root.copied ? "Copied." : "Scratchpad saved locally."
+          wrapMode: Text.WordWrap
+          color: root.scratchpadSaveState === "error" || !root.backendInstalled
+            ? root.accent : Qt.darker(root.foreground, 1.6)
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall
+        }
+        Button {
+          visible: root.scratchpadSaveState === "error" && root.backendInstalled
+          text: "Retry scratchpad save"
+          focusable: true
+          bordered: true
+          foreground: root.foreground
+          accent: root.accent
+          onClicked: root.saveScratchpad()
         }
       }
     }
@@ -3691,6 +3972,7 @@ BarWidget {
         spacing: Style.space(4)
 
         Text {
+          textFormat: Text.PlainText
           anchors.right: parent.right
           anchors.rightMargin: Style.space(10)
           text: "Screenshot"
@@ -3734,6 +4016,7 @@ BarWidget {
         }
 
         Text {
+          textFormat: Text.PlainText
           anchors.right: parent.right
           anchors.rightMargin: Style.space(10)
           topPadding: Style.space(6)

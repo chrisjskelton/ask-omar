@@ -62,11 +62,52 @@ class StateStoreTests(unittest.TestCase):
             store.save()
             self.assertEqual(StateStore(path).draft(), "")
 
-    def test_scratchpad_survives_reload_and_is_bounded(self):
+    def test_scratchpad_survives_reload_and_rejects_oversize_without_changing_it(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
-            StateStore(path).set_scratchpad("x" * 20001)
-            self.assertEqual(StateStore(path).scratchpad(), "x" * 20000)
+            store = StateStore(path)
+            store.set_scratchpad("x" * store.max_scratchpad_chars)
+            before = path.read_bytes()
+            with self.assertRaises(ValueError):
+                store.set_scratchpad("x" * (store.max_scratchpad_chars + 1))
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(StateStore(path).scratchpad(), "x" * store.max_scratchpad_chars)
+
+    def test_oversized_draft_and_notes_leave_saved_state_intact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            store = StateStore(path)
+            store.set_draft("d" * store.max_draft_chars)
+            store.save_scratchpad_notes(["n" * store.max_scratchpad_chars])
+            before = path.read_bytes()
+            for operation in (
+                lambda: store.set_draft("d" * (store.max_draft_chars + 1)),
+                lambda: store.save_scratchpad_notes([""] * (store.max_scratchpad_notes + 1)),
+                lambda: store.save_scratchpad_notes(["n" * (store.max_scratchpad_chars + 1)]),
+                lambda: store.save_scratchpad_notes([42]),
+            ):
+                with self.assertRaises(ValueError):
+                    operation()
+                self.assertEqual(path.read_bytes(), before)
+
+    def test_zero_history_limit_discards_loaded_and_new_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            StateStore(path).add_history("old", "answer", "assistant")
+            store = StateStore(path, history_limit=0)
+            self.assertEqual(store.history(), [])
+            store.add_history("new", "answer", "assistant")
+            store.record_action("example")
+            self.assertEqual(StateStore(path).history(), [])
+
+    def test_malformed_state_collections_are_ignored(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text('{"version":1,"events":"bad","history":{"bad":true},"draft":{"text":"bad","at":"bad"}}')
+            store = StateStore(path)
+            self.assertEqual(store.history(), [])
+            self.assertEqual(store.draft(), "")
+            store.record_action("example")
 
     def test_scratchpad_can_be_cleared(self):
         with tempfile.TemporaryDirectory() as directory:

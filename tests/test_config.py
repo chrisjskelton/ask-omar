@@ -26,6 +26,66 @@ class ConfigTests(unittest.TestCase):
             path.write_text("[conversation]\nidle_timeout_minutes = 0\n", encoding="utf-8")
             self.assertEqual(Config.load(path).conversation_idle_minutes, 0)
 
+    def test_zero_disables_history(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            path.write_text("[history]\nlimit = 0\n", encoding="utf-8")
+            self.assertEqual(Config.load(path).history_limit, 0)
+
+    def test_malformed_sections_and_values_raise_useful_errors(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            for source, message in (
+                ('agent = "bad"\n', r"\[agent\] must be a table"),
+                ('[agent]\nprovider = ["bad"]\n', "provider must be text"),
+                ('[history]\nlimit = "bad"\n', "limit must be an integer"),
+            ):
+                path.write_text(source, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, message):
+                    Config.load(path)
+
+    def test_failed_atomic_update_leaves_previous_config_unchanged(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            path.write_text('[agent]\nmodel = "old"\n', encoding="utf-8")
+            before = path.read_bytes()
+            with patch("ask_omar.config.os.replace", side_effect=OSError("disk failure")):
+                with self.assertRaises(OSError):
+                    update_agent_settings(path, model="new")
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(list(path.parent.glob("config.*")), [path])
+
+    def test_update_keeps_existing_parent_permissions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary) / "shared"
+            parent.mkdir(mode=0o755)
+            parent.chmod(0o755)
+            path = parent / "config.toml"
+            update_agent_settings(path, model="example")
+            self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o755)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(Config.load(path).model, "example")
+
+    def test_update_in_unowned_writable_parent(self):
+        parent = Path(tempfile.gettempdir())
+        if parent.stat().st_uid == os.getuid():
+            self.skipTest("No non-owned writable temporary parent is available")
+        with tempfile.NamedTemporaryFile(dir=parent, prefix="ask-omar-config-", delete=False) as handle:
+            path = Path(handle.name)
+        try:
+            before = stat.S_IMODE(parent.stat().st_mode)
+            update_agent_settings(path, model="example")
+            self.assertEqual(Config.load(path).model, "example")
+            self.assertEqual(stat.S_IMODE(parent.stat().st_mode), before)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_new_config_directory_is_private(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            parent = Path(temporary) / "ask-omar"
+            update_agent_settings(parent / "config.toml", model="example")
+            self.assertEqual(stat.S_IMODE(parent.stat().st_mode), 0o700)
+
     def test_update_agent_settings_preserves_other_sections(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "config.toml"

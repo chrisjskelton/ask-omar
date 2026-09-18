@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Ask Omar is an experimental desktop agent in your Omarchy bar. Ask, keep notes, and capture without leaving your desktop.">
+  <title>Ask Omar — A little less friction</title>
+  <link rel="stylesheet" href="./site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="shell header-inner">
+      <a class="brand" href="#top" aria-label="Ask Omar, back to top">
+        <span class="brand-mark" aria-hidden="true">✳</span>
+        <span>ask omar<span class="brand-period">.</span></span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="#demo">Demo</a>
+        <a href="#features">What it does</a>
+        <a href="#permissions">Permissions</a>
+        <a class="nav-github" href="https://github.com/chrisjskelton/ask-omar">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero shell" id="top" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> For Omarchy Quattro · Experimental 0.1.0</p>
+        <h1 id="hero-title">A little less <em>friction.</em></h1>
+        <p class="hero-lede">Meet Ask Omar, a desktop agent in your Omarchy bar. Ask a quick question, carry out a desktop task, or keep a thought close by—without opening another terminal.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="https://github.com/chrisjskelton/ask-omar#install">Read the install guide <span aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="#demo">Watch the demo <span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="hero-note">Built for Omarchy. AI requests use <a href="https://pi.dev">Pi</a> and your chosen provider; notes and capture work without Pi.</p>
+      </div>
+      <figure class="hero-visual">
+        <div class="image-frame">
+          <div class="frame-bar"><span class="frame-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>ON THE DESKTOP</span><span>01 / 03</span></div>
+          <img src="./media/ask-omar-topbar.png" alt="Ask Omar open beneath the Omarchy bar, showing a desktop request and its answer" width="1500" height="1133" fetchpriority="high">
+        </div>
+        <figcaption>The small questions have a place now.</figcaption>
+      </figure>
+    </section>
+
+    <section class="demo-section" id="demo" aria-labelledby="demo-title">
+      <div class="shell demo-grid">
+        <div class="section-intro">
+          <p class="eyebrow">A quick look</p>
+          <h2 id="demo-title">Right where you work.</h2>
+          <p>Ask Omar stays in the bar until you need it. Open the panel, ask for help, then return to the desktop.</p>
+          <details class="transcript">
+            <summary>Read the short demo transcript</summary>
+            <p>The widget answers that Super + 2 switches to workspace 2. A request then asks it to sort three disposable example files by extension. Pi runs ls and bash; Omar reports moving ideas.txt, plan.md and tasks.csv into txt, md and csv folders. The demo then shows a saved example note and the screenshot and recording choices. No screenshot is taken.</p>
+          </details>
+        </div>
+        <div class="video-wrap">
+          <video controls preload="metadata" playsinline poster="./media/ask-omar-topbar.png" aria-label="Ask Omar desktop demonstration">
+            <source src="./media/ask-omar-demo.mp4" type="video/mp4">
+            Your browser cannot play this video. <a href="./media/ask-omar-demo.mp4">Download the demo</a>.
+          </video>
+          <p class="video-caption">Real widget and Pi request, recorded in an isolated scene with disposable files. Silent; the pause between the task and controls is trimmed.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="features shell" id="features" aria-labelledby="features-title">
+      <div class="section-heading">
+        <p class="eyebrow">Made for the in-between moments</p>
+        <h2 id="features-title">One small place for three useful things.</h2>
+      </div>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <div class="feature-number">01 <span aria-hidden="true">↗</span></div>
+          <div class="feature-image"><img src="./media/ask-omar-topbar.png" alt="Ask Omar showing a desktop answer" width="1500" height="1133" loading="lazy"></div>
+          <div class="feature-copy">
+            <h3>Ask, then follow up.</h3>
+            <p>Get help with Omarchy or ask the agent to handle a bounded desktop task. Follow-ups share a conversation until you start a new one or it expires after idle time.</p>
+          </div>
+        </article>
+        <article class="feature-card">
+          <div class="feature-number">02 <span aria-hidden="true">✎</span></div>
+          <div class="feature-image"><img src="./media/ask-omar-scratchpad.png" alt="Scratchpad with local notes" width="1500" height="1133" loading="lazy"></div>
+          <div class="feature-copy">
+            <h3>Keep a Scratchpad.</h3>
+            <p>Save paths, prompts and half-written thoughts locally. Your notes stay separate from AI requests unless you choose to use them.</p>
+          </div>
+        </article>
+        <article class="feature-card">
+          <div class="feature-number">03 <span aria-hidden="true">⌁</span></div>
+          <div class="feature-image"><img src="./media/ask-omar-capture.png" alt="Capture menu with screenshot and recording choices" width="1500" height="1133" loading="lazy"></div>
+          <div class="feature-copy">
+            <h3>Capture the moment.</h3>
+            <p>Take a screenshot or start a recording from the bar. Copy a file path or attach a screenshot to a note. Optional Voxtype dictation can fill a draft.</p>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="permissions-section" id="permissions" aria-labelledby="permissions-title">
+      <div class="shell permissions-grid">
+        <div>
+          <p class="eyebrow">Know what you're running</p>
+          <h2 id="permissions-title">A desktop agent with your permissions.</h2>
+        </div>
+        <div class="permissions-copy">
+          <p>Ask Omar runs as your user. It can read files, run programs and use the network. Risky command patterns may pause for <strong>Allow once</strong> or <strong>Deny</strong>, but the guard is a convenience brake, not a sandbox. Stopping a task does not undo actions already completed.</p>
+          <p>AI requests use Pi and the provider you connect inside Pi. Ask Omar does not install Pi or handle your provider sign-in. Notes, drafts and recent answers stay local; task context may be sent to your provider.</p>
+          <a class="text-link" href="https://github.com/chrisjskelton/ask-omar#permissions-and-the-guard">Read the permissions and privacy details <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="install-section shell" id="install" aria-labelledby="install-title">
+      <div class="install-panel">
+        <div>
+          <p class="eyebrow">Ready to try it?</p>
+          <h2 id="install-title">Bring Omar to your bar.</h2>
+          <p>Start with the install guide for requirements, commands and setup. The Omarchy marketplace route needs a manual companion service setup after the widget is installed.</p>
+        </div>
+        <div class="install-actions">
+          <a class="button button-primary" href="https://github.com/chrisjskelton/ask-omar#install">Install from the README <span aria-hidden="true">↗</span></a>
+          <a class="text-link" href="https://github.com/chrisjskelton/ask-omar">View the source on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="shell footer-inner">
+      <span>ask omar<span class="brand-period">.</span> <span class="footer-muted">Experimental 0.1.0 · MIT licensed</span></span>
+      <a href="https://github.com/chrisjskelton/ask-omar">GitHub <span aria-hidden="true">↗</span></a>
+    </div>
+  </footer>
+</body>
+</html>

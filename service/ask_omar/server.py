@@ -59,7 +59,7 @@ class AskOmar:
         self.config = config or Config.load(self.config_path)
         self.state = StateStore(state_home() / "state.json", self.config.history_limit)
         self.agent = PiAgent(self.config) if self.config.backend == "pi" else None
-        self.foreground_lock = threading.Lock()
+        self.foreground_lock = threading.RLock()
         self.active_cancel_event: threading.Event | None = None
         self.active_lock = threading.Lock()
 
@@ -101,9 +101,15 @@ class AskOmar:
         raw_query: str,
         cancel_event: threading.Event,
     ) -> dict[str, Any]:
-        query = raw_query.strip()[:2000]
+        query = raw_query.strip()
         if not query:
             return {"ok": False, "error": "Ask Omar needs a question or request."}
+        if len(query) > self.state.max_query_chars:
+            return {
+                "ok": False,
+                "error": f"Question exceeds {self.state.max_query_chars} characters.",
+                "error_code": "query_too_long",
+            }
         if cancel_event.is_set():
             return self.stopped_response()
 
@@ -228,6 +234,10 @@ class AskOmar:
 
     def seed_agent_defaults(self) -> bool:
         """Fill empty provider/model from Pi settings, else the first listed model."""
+        with self.foreground_lock:
+            return self._seed_agent_defaults_locked()
+
+    def _seed_agent_defaults_locked(self) -> bool:
         if self.config.agent_identity_ready:
             return False
         if not shutil.which("pi"):
@@ -315,17 +325,17 @@ class AskOmar:
         next_thinking = (thinking or self.config.thinking).strip()
         if not next_provider or not next_model or not next_thinking:
             return {"ok": False, "error": "Provider, model, and reasoning are required."}
-        path = self.config_path
-        try:
-            update_agent_settings(
-                path,
-                provider=next_provider,
-                model=next_model,
-                thinking=next_thinking,
-            )
-        except ValueError as error:
-            return {"ok": False, "error": str(error), "error_code": "invalid_agent_settings"}
         with self.foreground_lock:
+            path = self.config_path
+            try:
+                update_agent_settings(
+                    path,
+                    provider=next_provider,
+                    model=next_model,
+                    thinking=next_thinking,
+                )
+            except ValueError as error:
+                return {"ok": False, "error": str(error), "error_code": "invalid_agent_settings"}
             if self.agent:
                 self.agent.stop()
             self.config = Config.load(path)
@@ -566,12 +576,18 @@ class AskOmar:
         if request_type == "draft_get":
             return self.response(kind="draft", draft=self.state.draft())
         if request_type == "draft_set":
-            self.state.set_draft(str(request.get("draft", "")))
+            try:
+                self.state.set_draft(str(request.get("draft", "")))
+            except ValueError as error:
+                return {"ok": False, "error": str(error), "error_code": "draft_too_long"}
             return self.response(kind="draft", draft=self.state.draft())
         if request_type == "scratchpad_get":
             return self.response(kind="scratchpad", text=self.state.scratchpad())
         if request_type == "scratchpad_set":
-            self.state.set_scratchpad(str(request.get("text", "")))
+            try:
+                self.state.set_scratchpad(str(request.get("text", "")))
+            except ValueError as error:
+                return {"ok": False, "error": str(error), "error_code": "scratchpad_too_long"}
             return self.response(kind="scratchpad", text=self.state.scratchpad())
         if request_type == "scratchpad_clear":
             self.state.clear_scratchpad()
@@ -583,8 +599,17 @@ class AskOmar:
         if request_type == "scratchpad_notes_save":
             notes = request.get("notes", [])
             if not isinstance(notes, list):
-                return {"ok": False, "error": "Scratchpad notes must be a list."}
-            return self.response(kind="scratchpad_notes", notes=self.state.save_scratchpad_notes(notes))
+                return {"ok": False, "error": "Scratchpad notes must be a list.", "error_code": "invalid_scratchpad_notes"}
+            try:
+                saved = self.state.save_scratchpad_notes(notes)
+            except ValueError as error:
+                code = (
+                    "scratchpad_notes_too_many" if len(notes) > self.state.max_scratchpad_notes
+                    else "invalid_scratchpad_notes" if any(not isinstance(note, str) for note in notes)
+                    else "scratchpad_note_too_long"
+                )
+                return {"ok": False, "error": str(error), "error_code": code}
+            return self.response(kind="scratchpad_notes", notes=saved)
         if request_type == "new_conversation":
             with self.foreground_lock:
                 if self.agent:
