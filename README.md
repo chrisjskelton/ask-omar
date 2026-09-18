@@ -1,8 +1,8 @@
 # Ask Omar
 
-**A desktop agent in your Omarchy bar.**
+**An AI assistant in your Omarchy top menubar.**
 
-Ask a question, act on a desktop task, or keep the notes you carry between sessions—without opening another terminal. Built for Omarchy, powered by [Pi](https://pi.dev).
+Type a question in the top bar. Answers and follow-ups open in a panel beneath it; notes, capture and optional dictation are a click away. Ask Omar stays part of your desktop, without another terminal to open. Built for Omarchy, powered by [Pi](https://pi.dev).
 
 **Experimental 0.1.0.** Runs with your user permissions. The command guard is a convenience brake, not a sandbox. Agent requests need Pi and a connected model provider; notes and capture do not.
 

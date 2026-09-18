@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Ask Omar is an experimental desktop agent in your Omarchy bar. Ask, keep notes, and capture without leaving your desktop.">
-  <title>Ask Omar — A little less friction</title>
+  <meta name="description" content="Ask Omar is an experimental AI assistant in your Omarchy top menubar. Ask, keep notes, and capture without leaving your desktop.">
+  <title>Ask Omar — AI in your Omarchy top bar</title>
   <link rel="stylesheet" href="./site.css">
 </head>
 <body>
@@ -29,8 +29,8 @@
     <section class="hero shell" id="top" aria-labelledby="hero-title">
       <div class="hero-copy">
         <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> For Omarchy Quattro · Experimental 0.1.0</p>
-        <h1 id="hero-title">A little less <em>friction.</em></h1>
-        <p class="hero-lede">Meet Ask Omar, a desktop agent in your Omarchy bar. Ask a quick question, carry out a desktop task, or keep a thought close by—without opening another terminal.</p>
+        <h1 id="hero-title">A little help.<br><em>In your top bar.</em></h1>
+        <p class="hero-lede">Ask Omar lives in Omarchy’s top menubar. Ask a question right there; answers open in a panel beneath it. Keep a note or start a desktop task without opening another terminal.</p>
         <div class="hero-actions">
           <a class="button button-primary" href="https://github.com/chrisjskelton/ask-omar#install">Read the install guide <span aria-hidden="true">↗</span></a>
           <a class="button button-secondary" href="#demo">Watch the demo <span aria-hidden="true">↓</span></a>
@@ -39,10 +39,9 @@
       </div>
       <figure class="hero-visual">
         <div class="image-frame">
-          <div class="frame-bar"><span class="frame-lights" aria-hidden="true"><i></i><i></i><i></i></span><span>ON THE DESKTOP</span><span>01 / 03</span></div>
-          <img src="./media/ask-omar-topbar.png" alt="Ask Omar open beneath the Omarchy bar, showing a desktop request and its answer" width="1500" height="1133" fetchpriority="high">
+          <img src="./media/ask-omar-topbar.png" alt="Ask Omar open beneath the Omarchy bar, showing a desktop request and its answer" width="1500" height="866" fetchpriority="high">
         </div>
-        <figcaption>The small questions have a place now.</figcaption>
+        <figcaption>In the top bar when you need it. Out of the way when you don’t.</figcaption>
       </figure>
     </section>
 
@@ -50,11 +49,11 @@
       <div class="shell demo-grid">
         <div class="section-intro">
           <p class="eyebrow">A quick look</p>
-          <h2 id="demo-title">Right where you work.</h2>
-          <p>Ask Omar stays in the bar until you need it. Open the panel, ask for help, then return to the desktop.</p>
+          <h2 id="demo-title">From the top bar. Back to your day.</h2>
+          <p>The input, mic, notes and capture controls live in the top menubar. A panel opens below for answers and follow-ups, then closes when you’re done.</p>
           <details class="transcript">
             <summary>Read the short demo transcript</summary>
-            <p>The widget answers that Super + 2 switches to workspace 2. A request then asks it to sort three disposable example files by extension. Pi runs ls and bash; Omar reports moving ideas.txt, plan.md and tasks.csv into txt, md and csv folders. The demo then shows a saved example note and the screenshot and recording choices. No screenshot is taken.</p>
+            <p>Ask Omar starts as a field in the top menubar. Its panel opens beneath the bar when a request asks it to sort three disposable example files by extension. Pi runs ls and bash; Omar reports moving ideas.txt, plan.md and tasks.csv into txt, md and csv folders. The demo then shows a saved example note and the screenshot and recording choices, before closing back to the top bar. No screenshot is taken.</p>
           </details>
         </div>
         <div class="video-wrap">
@@ -62,7 +61,7 @@
             <source src="./media/ask-omar-demo.mp4" type="video/mp4">
             Your browser cannot play this video. <a href="./media/ask-omar-demo.mp4">Download the demo</a>.
           </video>
-          <p class="video-caption">Real widget and Pi request, recorded in an isolated scene with disposable files. Silent; the pause between the task and controls is trimmed.</p>
+          <p class="video-caption">Real widget and Pi request at the top of an isolated example desktop. Disposable files; silent, continuous recording.</p>
         </div>
       </div>
     </section>
@@ -75,7 +74,7 @@
       <div class="feature-grid">
         <article class="feature-card">
           <div class="feature-number">01 <span aria-hidden="true">↗</span></div>
-          <div class="feature-image"><img src="./media/ask-omar-topbar.png" alt="Ask Omar showing a desktop answer" width="1500" height="1133" loading="lazy"></div>
+          <div class="feature-image"><img src="./media/ask-omar-topbar.png" alt="Ask Omar showing a desktop answer" width="1500" height="866" loading="lazy"></div>
           <div class="feature-copy">
             <h3>Ask, then follow up.</h3>
             <p>Get help with Omarchy or ask the agent to handle a bounded desktop task. Follow-ups share a conversation until you start a new one or it expires after idle time.</p>
@@ -83,7 +82,7 @@
         </article>
         <article class="feature-card">
           <div class="feature-number">02 <span aria-hidden="true">✎</span></div>
-          <div class="feature-image"><img src="./media/ask-omar-scratchpad.png" alt="Scratchpad with local notes" width="1500" height="1133" loading="lazy"></div>
+          <div class="feature-image"><img src="./media/ask-omar-scratchpad.png" alt="Scratchpad with local notes" width="1500" height="866" loading="lazy"></div>
           <div class="feature-copy">
             <h3>Keep a Scratchpad.</h3>
             <p>Save paths, prompts and half-written thoughts locally. Your notes stay separate from AI requests unless you choose to use them.</p>
@@ -91,7 +90,7 @@
         </article>
         <article class="feature-card">
           <div class="feature-number">03 <span aria-hidden="true">⌁</span></div>
-          <div class="feature-image"><img src="./media/ask-omar-capture.png" alt="Capture menu with screenshot and recording choices" width="1500" height="1133" loading="lazy"></div>
+          <div class="feature-image"><img src="./media/ask-omar-capture.png" alt="Capture menu with screenshot and recording choices" width="1500" height="866" loading="lazy"></div>
           <div class="feature-copy">
             <h3>Capture the moment.</h3>
             <p>Take a screenshot or start a recording from the bar. Copy a file path or attach a screenshot to a note. Optional Voxtype dictation can fill a draft.</p>

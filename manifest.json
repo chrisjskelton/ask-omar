@@ -4,7 +4,7 @@
   "name": "Ask Omar",
   "version": "0.1.0",
   "author": "Ask Omar contributors",
-  "description": "An always-available natural-language assistant for Omarchy",
+  "description": "An AI assistant in your Omarchy top menubar",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "plugin/AskOmar.qml"
