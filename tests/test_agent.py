@@ -27,7 +27,8 @@ class AgentCommandTests(unittest.TestCase):
         command = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low")).command()
         self.assertIn("--extension", command)
         ext_index = command.index("--extension")
-        self.assertIn("ask-omar-guard.ts", command[ext_index + 1])
+        extension = command[ext_index + 1].replace("\\", "/")
+        self.assertTrue(extension.endswith("ask_omar/extensions/ask-omar-guard.ts"), extension)
         self.assertIn("--no-extensions", command)
 
     def test_system_prompt_describes_direct_tools_and_safety(self):
@@ -36,7 +37,10 @@ class AgentCommandTests(unittest.TestCase):
         self.assertIn("read, grep, find, ls, and bash", SYSTEM_PROMPT)
         self.assertIn("not user authorization", SYSTEM_PROMPT)
         self.assertIn("not open a visible terminal", SYSTEM_PROMPT)
-        self.assertIn("sensitive files", SYSTEM_PROMPT)
+        self.assertIn("Allow once / Deny", SYSTEM_PROMPT)
+        self.assertIn("Never ask the user to confirm those same actions by typing yes/no in chat", SYSTEM_PROMPT)
+        self.assertIn("not for elevating or destroying data", SYSTEM_PROMPT)
+        self.assertNotIn("Ask conversationally before destructive", SYSTEM_PROMPT)
         self.assertIn("ask one brief question", SYSTEM_PROMPT)
         self.assertIn("never guess your runtime identity", SYSTEM_PROMPT)
         self.assertIn("~/.config/ask-omar/config.toml", SYSTEM_PROMPT)
@@ -269,7 +273,7 @@ class AgentQueryTests(unittest.TestCase):
             }) + "\n").encode())
             writer.flush()
             with patch.object(agent, "start"), patch.object(agent, "stop"):
-                with self.assertRaisesRegex(AgentError, "timed out and was denied") as raised:
+                with self.assertRaisesRegex(AgentError, "Command approval timed out") as raised:
                     agent.query("restart")
 
         sent = agent.process.stdin.getvalue().decode()
@@ -277,6 +281,64 @@ class AgentQueryTests(unittest.TestCase):
         self.assertIn('"id": "confirm-1"', sent)
         self.assertIn('"cancelled": true', sent)
         self.assertEqual(raised.exception.code, "confirmation_timeout")
+        self.assertIsNone(agent.confirmation())
+        stdout.close()
+
+    def test_allow_select_confirmation_continues_query(self):
+        read_fd, write_fd = os.pipe()
+        stdout = os.fdopen(read_fd, "rb")
+
+        class FakeProcess:
+            pid = os.getpid()
+
+            def __init__(self):
+                self.stdin = io.BytesIO()
+                self.stdout = stdout
+
+            def poll(self):
+                return None
+
+        agent = PiAgent(Config(timeout_seconds=10))
+        agent.process = FakeProcess()
+
+        def allow_soon():
+            for _ in range(50):
+                if agent.confirmation():
+                    self.assertTrue(agent.respond_confirmation("confirm-allow", "Allow"))
+                    return
+                time.sleep(0.02)
+            self.fail("confirmation never appeared")
+
+        with os.fdopen(write_fd, "wb") as writer:
+            writer.write((json.dumps({
+                "type": "extension_ui_request",
+                "id": "confirm-allow",
+                "method": "select",
+                "title": "Omar wants to delete a folder\nCommand: rm -rf /tmp/x",
+                "options": ["Allow", "Deny"],
+            }) + "\n").encode())
+            writer.write((json.dumps({
+                "type": "message_end",
+                "message": {
+                    "role": "assistant",
+                    "stopReason": "stop",
+                    "content": [{"type": "text", "text": "Removed."}],
+                },
+            }) + "\n").encode())
+            writer.write((json.dumps({"type": "agent_settled"}) + "\n").encode())
+            writer.flush()
+            worker = threading.Thread(target=allow_soon)
+            worker.start()
+            with patch.object(agent, "start"), patch.object(agent, "stop"):
+                answer = agent.query("delete /tmp/x")
+            worker.join(timeout=2)
+            self.assertFalse(worker.is_alive())
+
+        self.assertEqual(answer, "Removed.")
+        sent = agent.process.stdin.getvalue().decode()
+        self.assertIn('"type": "extension_ui_response"', sent)
+        self.assertIn('"id": "confirm-allow"', sent)
+        self.assertIn('"value": "Allow"', sent)
         self.assertIsNone(agent.confirmation())
         stdout.close()
 
