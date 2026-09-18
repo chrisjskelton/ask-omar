@@ -37,6 +37,22 @@ MAX_SCRATCHPAD_ATTACHMENT_BYTES = 25 * 1024 * 1024
 SCRATCHPAD_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+def scratchpad_image_kind(path: Path) -> str | None:
+    """Return png/jpeg/webp when the file content matches, else None."""
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(16)
+    except OSError:
+        return None
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if len(head) >= 12 and head.startswith(b"RIFF") and head[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
 class AskOmar:
     def __init__(self, config: Config | None = None, config_path: Path | None = None):
         self.config_path = config_path or default_config_path()
@@ -469,12 +485,22 @@ class AskOmar:
 
     def attach_scratchpad_screenshot(self, source: str) -> dict[str, Any]:
         try:
-            image = Path(source).expanduser().resolve(strict=True)
+            candidate = Path(source).expanduser()
+        except (OSError, RuntimeError):
+            return {"ok": False, "error": "Ask Omar could not find that screenshot."}
+        # Refuse symlink hops before resolve so a same-UID confused deputy cannot
+        # copy an arbitrary secret path that happens to end in .png.
+        try:
+            if candidate.is_symlink() or any(part.is_symlink() for part in candidate.parents):
+                return {"ok": False, "error": "Ask Omar will not follow a screenshot symlink."}
+            image = candidate.resolve(strict=True)
         except (OSError, RuntimeError):
             return {"ok": False, "error": "Ask Omar could not find that screenshot."}
         if not image.is_file():
             return {"ok": False, "error": "Ask Omar could not attach that screenshot."}
         if image.suffix.casefold() not in SCRATCHPAD_IMAGE_SUFFIXES:
+            return {"ok": False, "error": "Ask Omar can only preview PNG, JPEG, or WebP screenshots."}
+        if scratchpad_image_kind(image) is None:
             return {"ok": False, "error": "Ask Omar can only preview PNG, JPEG, or WebP screenshots."}
         try:
             if image.stat().st_size > MAX_SCRATCHPAD_ATTACHMENT_BYTES:
@@ -614,7 +640,12 @@ class OmarServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
 
 def serve() -> None:
     path = runtime_socket()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # XDG_RUNTIME_DIR is already private; only force 0700 on Ask Omar's /tmp fallback.
+    if path.parent.name.startswith("ask-omar-"):
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        os.chmod(path.parent, 0o700)
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
     try:
         path.unlink()
     except FileNotFoundError:

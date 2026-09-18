@@ -75,6 +75,30 @@ class StateStoreTests(unittest.TestCase):
             store.clear_scratchpad()
             self.assertEqual(store.scratchpad(), "")
 
+    def test_concurrent_draft_and_history_updates_do_not_raise(self):
+        import threading
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = StateStore(Path(directory) / "state.json")
+            errors: list[BaseException] = []
+
+            def writer(index: int) -> None:
+                try:
+                    for step in range(20):
+                        store.set_draft(f"draft-{index}-{step}")
+                        store.add_history(f"q-{index}-{step}", f"a-{index}-{step}", "help")
+                except BaseException as error:  # noqa: BLE001 - collect any worker failure
+                    errors.append(error)
+
+            threads = [threading.Thread(target=writer, args=(index,)) for index in range(4)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            self.assertEqual(errors, [])
+            self.assertTrue(store.history())
+            self.assertTrue(store.draft())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -183,7 +183,7 @@ class LocalAnswerTests(unittest.TestCase):
 
     def test_scratchpad_screenshot_attachment_is_private_markdown(self):
         source = Path(self.temp.name) / "source image.png"
-        source.write_bytes(b"image data")
+        source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"image data")
         state_home = Path(self.temp.name) / "state"
         with patch("ask_omar.server.state_home", return_value=state_home):
             result = self.omar.handle({"type": "scratchpad_attach", "path": str(source)})
@@ -193,7 +193,7 @@ class LocalAnswerTests(unittest.TestCase):
         attachments = state_home / "scratchpad" / "attachments"
         files = list(attachments.iterdir())
         self.assertEqual(len(files), 1)
-        self.assertEqual(files[0].read_bytes(), b"image data")
+        self.assertEqual(files[0].read_bytes(), b"\x89PNG\r\n\x1a\n" + b"image data")
         self.assertEqual(files[0].stat().st_mode & 0o777, 0o600)
 
     def test_scratchpad_attachment_rejects_non_images_and_oversized_files(self):
@@ -203,8 +203,22 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("PNG, JPEG, or WebP", result["error"])
 
+        fake = Path(self.temp.name) / "secret.png"
+        fake.write_bytes(b"not really a png")
+        result = self.omar.handle({"type": "scratchpad_attach", "path": str(fake)})
+        self.assertFalse(result["ok"])
+        self.assertIn("PNG, JPEG, or WebP", result["error"])
+
+        link = Path(self.temp.name) / "alias.png"
+        target = Path(self.temp.name) / "real.png"
+        target.write_bytes(b"\x89PNG\r\n\x1a\n" + b"ok")
+        link.symlink_to(target)
+        result = self.omar.handle({"type": "scratchpad_attach", "path": str(link)})
+        self.assertFalse(result["ok"])
+        self.assertIn("symlink", result["error"])
+
         source = Path(self.temp.name) / "large.png"
-        source.write_bytes(b"xx")
+        source.write_bytes(b"\x89PNG\r\n\x1a\n" + b"xx")
         with patch("ask_omar.server.MAX_SCRATCHPAD_ATTACHMENT_BYTES", 1):
             result = self.omar.handle({"type": "scratchpad_attach", "path": str(source)})
         self.assertFalse(result["ok"])
