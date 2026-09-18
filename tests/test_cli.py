@@ -138,6 +138,31 @@ class SetupReportTests(unittest.TestCase):
         self.assertEqual(code, 0)
         send.assert_called_once_with({"type": "health"})
 
+    def test_query_draft_and_notes_prefer_stdin_over_argv(self):
+        with (
+            patch("ask_omar.cli.request", return_value={"ok": True}) as send,
+            patch("ask_omar.cli.sys.stdin", io.StringIO("secret ask")),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(main(["query", "--stdin"]), 0)
+        send.assert_called_once_with({"type": "query", "query": "secret ask"})
+
+        with (
+            patch("ask_omar.cli.request", return_value={"ok": True}) as send,
+            patch("ask_omar.cli.sys.stdin", io.StringIO("draft body")),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(main(["draft", "--stdin"]), 0)
+        send.assert_called_once_with({"type": "draft_set", "draft": "draft body"})
+
+        with (
+            patch("ask_omar.cli.request", return_value={"ok": True}) as send,
+            patch("ask_omar.cli.sys.stdin", io.StringIO('["note"]')),
+            redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(main(["scratchpad-notes-save", "--stdin"]), 0)
+        send.assert_called_once_with({"type": "scratchpad_notes_save", "notes": ["note"]})
+
     def test_unknown_agent_status_falls_back_to_health(self):
         code, output = self.report(self.health("error", message="Ask Omar couldn't check Pi authentication."))
 

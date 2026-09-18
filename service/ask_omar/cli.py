@@ -126,7 +126,12 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--version", action="version", version=f"Ask Omar {__version__}")
     commands = result.add_subparsers(dest="command", required=True)
     query = commands.add_parser("query", help="Ask a question or request an action")
-    query.add_argument("text", nargs="+")
+    query.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the query from stdin instead of argv (preferred for private text)",
+    )
+    query.add_argument("text", nargs="*")
     action = commands.add_parser("action", help="Run an approved action")
     action.add_argument("id")
     commands.add_parser("stop", help="Stop the active Pi request")
@@ -137,15 +142,30 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("history", help="Show recent local history")
     commands.add_parser("clear-history", help="Clear recent local history")
     draft = commands.add_parser("draft", help="Save an unsent draft")
+    draft.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the draft from stdin instead of argv (preferred for private text)",
+    )
     draft.add_argument("text", nargs="?", default="")
     commands.add_parser("get-draft", help="Read the current unsent draft")
     scratchpad = commands.add_parser("scratchpad", help="Save scratchpad text")
+    scratchpad.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read scratchpad text from stdin instead of argv",
+    )
     scratchpad.add_argument("text", nargs="?", default="")
     commands.add_parser("get-scratchpad", help="Read scratchpad text")
     commands.add_parser("clear-scratchpad", help="Clear scratchpad text")
     notes = commands.add_parser("scratchpad-notes", help="Read scratchpad notes")
     save_notes = commands.add_parser("scratchpad-notes-save", help="Save scratchpad notes")
-    save_notes.add_argument("notes")
+    save_notes.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read the JSON notes list from stdin instead of argv",
+    )
+    save_notes.add_argument("notes", nargs="?", default="")
     attach = commands.add_parser("scratchpad-attach", help="Attach a screenshot to scratchpad")
     attach.add_argument("path")
     commands.add_parser("new-conversation", help="Reset the in-memory agent conversation")
@@ -166,7 +186,13 @@ def main(argv: list[str] | None = None) -> int:
         serve()
         return 0
     if args.command == "query":
-        return print_json(request({"type": "query", "query": " ".join(args.text)}))
+        if args.stdin:
+            text = sys.stdin.read()
+        else:
+            text = " ".join(args.text)
+        if not str(text).strip():
+            return print_json({"ok": False, "error": "Ask Omar needs a question or request."})
+        return print_json(request({"type": "query", "query": text}))
     if args.command == "action":
         return print_json(request({"type": "action", "id": args.id}))
     if args.command == "stop":
@@ -180,11 +206,13 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "clear-history":
         return print_json(request({"type": "clear_history"}))
     if args.command == "draft":
-        return print_json(request({"type": "draft_set", "draft": args.text}))
+        draft = sys.stdin.read() if args.stdin else args.text
+        return print_json(request({"type": "draft_set", "draft": draft}))
     if args.command == "get-draft":
         return print_json(request({"type": "draft_get"}))
     if args.command == "scratchpad":
-        return print_json(request({"type": "scratchpad_set", "text": args.text}))
+        text = sys.stdin.read() if args.stdin else args.text
+        return print_json(request({"type": "scratchpad_set", "text": text}))
     if args.command == "get-scratchpad":
         return print_json(request({"type": "scratchpad_get"}))
     if args.command == "clear-scratchpad":
@@ -192,8 +220,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scratchpad-notes":
         return print_json(request({"type": "scratchpad_notes"}))
     if args.command == "scratchpad-notes-save":
+        raw = sys.stdin.read() if args.stdin else args.notes
         try:
-            notes = json.loads(args.notes)
+            notes = json.loads(raw)
         except json.JSONDecodeError:
             return print_json({"ok": False, "error": "Scratchpad notes must be JSON."})
         return print_json(request({"type": "scratchpad_notes_save", "notes": notes}))

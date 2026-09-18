@@ -94,10 +94,13 @@ Scratchpad and capture need no Pi at all.
 ## Privacy
 
 No telemetry. Past answers, Scratchpad, configuration, and captures stay on your
-machine. What leaves: your requests and whatever context Pi reads go to your
-hosted model provider, and a `bash` command can use the network. Uninstalling
-leaves Pi, your provider sign-ins, and Ask Omar's configuration and state in
-place.
+machine. What leaves: your asks and whatever context Pi needs go to your hosted
+model provider, and a `bash` command can use the network.
+
+Omar is not a sandbox. It runs as you. Treat it like a terminal agent with a
+friendly front door: anything that can already act as your user can read local
+state or approve a pending command. Uninstalling leaves Pi, your provider
+sign-ins, and Ask Omar's configuration and state in place.
 
 ## Install
 
@@ -133,9 +136,11 @@ Omar runs as you, with your permissions. **It is not sandboxed.**
 It can request `sudo`. With the default guard on, a recognised command pauses for
 **Allow once / Deny**; approve and authenticate, and that command runs with full
 root privileges. The guard hard-blocks a short list of catastrophic patterns
-(`rm -rf /`, `dd of=/dev/…`, `mkfs`, fork bombs) and asks for one-time approval on
-known risky ones. Restart and shutdown are confirmable with a warning rather than
-forbidden.
+(including `rm -rf /` and close variants, `dd of=/dev/…`, `mkfs`, fork bombs,
+`curl|bash`, and attempts to rewrite Ask Omar's own guard) and asks for one-time
+approval on known risky ones. Restart and shutdown are confirmable with a warning
+rather than forbidden. Setting `"enabled": false` or emptying the hard-block list
+in `guard.json` does not turn the brake off.
 
 The guard matches known bash text patterns. That is all it does. It cannot catch
 every danger, a differently constructed command can walk around it, and it is not
