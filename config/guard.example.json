@@ -1,12 +1,19 @@
 {
-  "version": 2,
+  "version": 3,
   "enabled": true,
   "hardBlocked": [
     { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/[\\s'\"]*(?:$|[;&|])", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
+    { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/\\*", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
+    { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/\\.(?:\\s|$|[;&|'\"])", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
+    { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+//", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
+    { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*['\"]\\/['\"]", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
     { "pattern": "\\bdd\\b.*\\bof=/dev/", "reason": "Raw disk write", "description": "write directly to a disk, destroying data" },
     { "pattern": "\\bmkfs\\b", "reason": "Filesystem format", "description": "format a filesystem, erasing all data" },
     { "pattern": ":\\(\\)\\{\\s*:\\|:&\\s*\\};:", "reason": "Fork bomb", "description": "spawn infinite processes" },
-    { "pattern": "\\biptables\\s+-F\\b", "reason": "Firewall flush", "description": "remove all firewall rules" }
+    { "pattern": "\\biptables\\s+-F\\b", "reason": "Firewall flush", "description": "remove all firewall rules" },
+    { "pattern": "\\bnft\\b.*\\bflush\\b", "reason": "Firewall flush", "description": "remove all firewall rules" },
+    { "pattern": "\\b(curl|wget)\\b[^|;]*\\|\\s*(?:sudo\\s+)?(?:ba)?sh\\b", "reason": "Remote code pipe", "description": "download and run remote code through a shell" },
+    { "pattern": "\\b(shutil\\.rmtree|os\\.system|subprocess\\.(?:call|run|Popen))\\b[^\\n]*['\"]\\/", "reason": "Interpreter root wipe", "description": "delete everything on the system through an interpreter" }
   ],
   "confirmRequired": [
     { "pattern": "\\b(shutdown|reboot|halt|poweroff)\\b", "reason": "System power control", "description": "shut down or restart the system, which can discard unsaved work or interrupt file operations" },
@@ -17,11 +24,13 @@
     { "pattern": "\\bgit\\s+clean\\s+(-[a-z]*f[a-z]*d?|--force)\\b", "reason": "Git clean (force)", "description": "permanently remove untracked files and directories" },
     { "pattern": "\\brsync\\b.*--delete", "reason": "Rsync delete", "description": "delete files not present in the source" },
     { "pattern": "\\bsudo\\b", "reason": "Elevated privileges", "description": "run a command with administrator access" },
+    { "pattern": "\\bdoas\\b", "reason": "Elevated privileges", "description": "run a command with administrator access" },
     { "pattern": "\\bchmod\\b.*\\b777\\b", "reason": "World-writable permissions", "description": "make files writable by everyone on the system" },
+    { "pattern": "\\bchmod\\b.*[+=][0-7]*s", "reason": "Setuid or setgid permissions", "description": "make a program run with elevated privileges" },
     { "pattern": "\\bchmod\\s+-R\\b", "reason": "Recursive permission change", "description": "change permissions on all files in a folder" },
     { "pattern": "\\bchown\\s+-R\\b", "reason": "Recursive ownership change", "description": "change ownership of all files in a folder" },
     { "pattern": "\\bkillall\\b", "reason": "Mass process termination", "description": "stop all processes matching a name" },
-    { "pattern": "\\bpkill\\s+-9\\b", "reason": "Force kill processes", "description": "force-stop processes" },
+    { "pattern": "\\bpkill\\s+(-9|-KILL|-SIGKILL)\\b", "reason": "Force kill processes", "description": "force-stop processes" },
     { "pattern": "\\bsystemctl\\s+(stop|disable|mask)\\b", "reason": "Disabling system services", "description": "stop or disable a system service" },
     { "pattern": "\\b(truncate|shred)\\b", "reason": "Destructive file operation", "description": "destroy file contents" }
   ],
