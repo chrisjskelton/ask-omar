@@ -9,6 +9,8 @@
 - Explicit input limits and visible save failures instead of silent note truncation.
 - Query transport that remains connected while backend approval waits are active.
 - Optional history retention, safer configuration/state handling and documented removal.
+- Save-time byte limits keep large Unicode answers from making saved notes and drafts disappear after restarting.
+- Bounded local requests accept a full Unicode Scratchpad and clearly reject requests above 5 MiB.
 - Root plugin manifest, explicit companion-service setup, installation tests and CI.
 
 This is a personal desktop tool, initially tested on Omarchy 4.0.3-1 and Pi 0.85.1. Broad compatibility and unattended operation are not promised.

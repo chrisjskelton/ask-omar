@@ -6,9 +6,9 @@ Type a question in the top bar. Answers and follow-ups open in a panel beneath i
 
 **Experimental 0.1.0.** Runs with your user permissions. The command guard is a convenience brake, not a sandbox. Agent requests need Pi and a connected model provider; notes and capture do not.
 
-![Ask Omar completing a desktop request](docs/media/ask-omar-topbar.png)
+![Ask Omar beneath the Omarchy top bar, showing a shortcut cheat sheet](docs/media/ask-omar-topbar.png)
 
-[Watch the demo](https://chrisjskelton.github.io/ask-omar/) · [Releases](https://github.com/chrisjskelton/ask-omar/releases) · [Security](SECURITY.md)
+[Watch the demo](https://aboutme.md/ask-omar) · [Releases](https://github.com/chrisjskelton/ask-omar/releases) · [Security](SECURITY.md)
 
 ## What it does
 
@@ -82,7 +82,7 @@ No Ask Omar telemetry is implemented. Notes, drafts and recent answers are store
 
 | Data | Retention |
 |---|---|
-| Recent questions and answers | Newest 100 by default. Clear in Settings, or set `[history] limit = 0` to disable storage. |
+| Recent questions and answers | Up to the newest 100 by default, within a 10 MiB shared state-file limit. Older answers are removed first to preserve notes and drafts. Clear in Settings, or set `[history] limit = 0` to disable storage. |
 | Draft | Up to 2,000 characters; expires when read after 24 hours. |
 | Scratchpad | Up to 20 notes of 20,000 characters each. Over-limit saves are rejected visibly. |
 | Attached screenshots | Private local copies. Removing a note does not remove its attachment files. |

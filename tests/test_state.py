@@ -32,6 +32,36 @@ class StateStoreTests(unittest.TestCase):
                 path.write_text('{"version":1,"history":[{"query":"should not load"}]}')
                 self.assertEqual(StateStore(path).history(), [])
 
+    def test_byte_limit_keeps_recent_history_and_preserves_notes_and_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            with patch.object(StateStore, "max_state_bytes", 16000):
+                store = StateStore(path, history_limit=100)
+                notes = ["🙂" * 1000]
+                store.save_scratchpad_notes(notes)
+                store.set_draft("An unsent draft")
+                for index in range(6):
+                    store.add_history(str(index), "🙂" * 1000, "assistant")
+                self.assertLessEqual(path.stat().st_size, store.max_state_bytes)
+                loaded = StateStore(path, history_limit=100)
+                self.assertEqual(loaded.scratchpad_notes(), notes)
+                self.assertEqual(loaded.draft(), "An unsent draft")
+                self.assertEqual(loaded.history(), store.history())
+                self.assertEqual(loaded.history()[0]["query"], "5")
+                self.assertLess(len(loaded.history()), 6)
+
+    def test_unfit_state_does_not_replace_last_saved_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            store = StateStore(path)
+            store.save_scratchpad_notes(["Keep this note"])
+            before = path.read_bytes()
+            with patch.object(StateStore, "max_state_bytes", 100):
+                with self.assertRaises(ValueError):
+                    store.save()
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(StateStore(path).scratchpad_notes(), ["Keep this note"])
+
     def test_state_directory_and_file_are_private(self):
         with tempfile.TemporaryDirectory() as directory:
             state_dir = Path(directory) / "ask-omar"

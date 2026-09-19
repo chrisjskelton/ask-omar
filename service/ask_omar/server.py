@@ -34,6 +34,7 @@ from .state import StateStore
 
 
 MAX_SCRATCHPAD_ATTACHMENT_BYTES = 25 * 1024 * 1024
+MAX_REQUEST_BYTES = 5 * 1024 * 1024
 SCRATCHPAD_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
@@ -637,16 +638,25 @@ class AskOmar:
 
 class RequestHandler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
-        raw = self.rfile.readline(1_000_000)
+        # A full scratchpad can exceed 1 MiB in UTF-8 and approach 4.8 MB
+        # when non-BMP characters use JSON surrogate-pair escapes.
+        raw = self.rfile.readline(MAX_REQUEST_BYTES + 1)
         if not raw:
             return
-        try:
-            request = json.loads(raw.decode("utf-8"))
-            response = self.server.omar.handle(request)  # type: ignore[attr-defined]
-        except (json.JSONDecodeError, UnicodeDecodeError) as error:
-            response = {"ok": False, "error": f"Invalid request: {error}"}
-        except Exception as error:  # Keep the desktop surface responsive on unexpected failures.
-            response = {"ok": False, "error": f"Ask Omar failed: {error}"}
+        if len(raw) > MAX_REQUEST_BYTES:
+            response = {
+                "ok": False,
+                "error": "Request is too large (maximum 5 MiB).",
+                "error_code": "request_too_large",
+            }
+        else:
+            try:
+                request = json.loads(raw.decode("utf-8"))
+                response = self.server.omar.handle(request)  # type: ignore[attr-defined]
+            except (json.JSONDecodeError, UnicodeDecodeError) as error:
+                response = {"ok": False, "error": f"Invalid request: {error}"}
+            except Exception as error:  # Keep the desktop surface responsive on unexpected failures.
+                response = {"ok": False, "error": f"Ask Omar failed: {error}"}
         self.wfile.write((json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8"))
 
 

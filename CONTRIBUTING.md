@@ -24,6 +24,8 @@ only the companion backend for a marketplace checkout; `make install` also
 installs and enables the widget. The test suite includes fake-command install,
 update and removal checks, so it does not change your desktop.
 
-The static site lives in `docs/`. Preview it with `python -m http.server 8000 --directory docs`, and use the manually triggered **Publish site**
-GitHub Actions workflow after GitHub Pages is enabled with Actions as its source.
+The standalone release preview lives in `docs/`. Preview it with
+`python -m http.server 8000 --directory docs`. The production page at
+https://aboutme.md/ask-omar is an Astro route in the private `aboutme.md`
+repository, deployed to the existing VPS static root. See [release ownership](docs/RELEASING.md).
 Record demo media with invented data and review every frame for private content.

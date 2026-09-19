@@ -1,3 +1,5 @@
+import json
+import socket
 import stat
 import subprocess
 import tempfile
@@ -9,7 +11,7 @@ from unittest.mock import Mock, patch
 
 from ask_omar.agent import AgentCancelled
 from ask_omar.config import Config
-from ask_omar.server import AskOmar, OmarServer
+from ask_omar.server import MAX_REQUEST_BYTES, AskOmar, OmarServer
 from ask_omar.state import StateStore
 
 
@@ -542,6 +544,48 @@ class LocalAnswerTests(unittest.TestCase):
         try:
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
         finally:
+            server.server_close()
+            path.unlink(missing_ok=True)
+
+    def test_socket_accepts_full_surrogate_escaped_unicode_scratchpad(self):
+        notes = ["😀" * self.omar.state.max_scratchpad_chars] * (
+            self.omar.state.max_scratchpad_notes
+        )
+        payload = (
+            json.dumps(
+                {"type": "scratchpad_notes_save", "notes": notes}, ensure_ascii=True
+            )
+            + "\n"
+        ).encode("utf-8")
+        self.assertGreater(len(payload), 4_000_000)
+        self.assertLessEqual(len(payload), MAX_REQUEST_BYTES)
+
+        response = self.socket_request(payload)
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["notes"], notes)
+
+    def test_socket_rejects_oversized_request_with_clear_error(self):
+        response = self.socket_request(b"x" * (MAX_REQUEST_BYTES + 1) + b"\n")
+
+        self.assertFalse(response["ok"])
+        self.assertEqual(response["error_code"], "request_too_large")
+        self.assertIn("maximum 5 MiB", response["error"])
+
+    def socket_request(self, payload: bytes) -> dict:
+        path = Path(self.temp.name) / "request.sock"
+        server = OmarServer(path, self.omar)
+        server_thread = threading.Thread(target=server.handle_request)
+        server_thread.start()
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.connect(str(path))
+                client.sendall(payload)
+                client.shutdown(socket.SHUT_WR)
+                response = client.makefile("rb").readline()
+            return json.loads(response.decode("utf-8"))
+        finally:
+            server_thread.join(timeout=2)
             server.server_close()
             path.unlink(missing_ok=True)
 

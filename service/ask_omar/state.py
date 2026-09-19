@@ -77,13 +77,39 @@ class StateStore:
     def _save_unlocked(self) -> None:
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.path.parent, 0o700)
+        # Use the same byte ceiling on save and load. Large multibyte answers
+        # must not make the next restart discard notes and drafts as oversized.
+        payload = dict(self.data)
+
+        def encode() -> bytes:
+            return (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+        encoded = encode()
+        if len(encoded) > self.max_state_bytes:
+            history = payload.get("history", [])
+            low, high = 0, len(history)
+            payload["history"] = []
+            encoded = encode()
+            if len(encoded) > self.max_state_bytes:
+                raise ValueError("Saved state exceeds its storage limit; existing saved data was not changed.")
+            # Keep the largest prefix of newest answers that fits. Notes and
+            # drafts are never removed to make room for answer history.
+            while low < high:
+                middle = (low + high + 1) // 2
+                payload["history"] = history[:middle]
+                candidate = encode()
+                if len(candidate) <= self.max_state_bytes:
+                    low, encoded = middle, candidate
+                else:
+                    high = middle - 1
+            payload["history"] = history[:low]
         fd, temporary = tempfile.mkstemp(prefix="state.", dir=self.path.parent)
         try:
-            with os.fdopen(fd, "w") as handle:
-                json.dump(self.data, handle, ensure_ascii=False, indent=2)
-                handle.write("\n")
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(encoded)
             os.replace(temporary, self.path)
             os.chmod(self.path, 0o600)
+            self.data["history"] = payload.get("history", [])
         finally:
             try:
                 os.unlink(temporary)
