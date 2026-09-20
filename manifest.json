@@ -3,7 +3,7 @@
   "id": "ask-omar.assistant",
   "name": "Ask Omar",
   "version": "0.1.0",
-  "author": "Ask Omar contributors",
+  "author": "Chris Skelton",
   "description": "An AI assistant in your Omarchy top menubar",
   "kinds": ["bar-widget"],
   "entryPoints": {
