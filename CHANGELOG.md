@@ -6,6 +6,7 @@
 - Ask First shows the exact command with Allow once, Allow for 15 minutes, and Deny.
 - Temporary grants cover later requests for up to 15 minutes and end early on New conversation or service restart.
 - Timeouts identify the last tool or shell command Pi was using when available.
+- The broker restores the selected access mode after commands and stops escaped descendants on timeout or cancellation.
 - Block Commands disables the shell command tool; explicitly enabled Allow All runs commands without asking.
 - Direct read-only Pi tools remain automatic to keep routine inspection quick.
 - Mandatory catastrophic hard blocks remain active in every mode; Ask First also shows recognised-risk warnings.

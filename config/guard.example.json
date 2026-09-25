@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "enabled": true,
   "hardBlocked": [
     { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/[\\s'\"]*(?:$|[;&|])", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
@@ -13,7 +13,8 @@
     { "pattern": "\\biptables\\s+-F\\b", "reason": "Firewall flush", "description": "remove all firewall rules" },
     { "pattern": "\\bnft\\b.*\\bflush\\b", "reason": "Firewall flush", "description": "remove all firewall rules" },
     { "pattern": "\\b(curl|wget)\\b[^|;]*\\|\\s*(?:sudo\\s+)?(?:ba)?sh\\b", "reason": "Remote code pipe", "description": "download and run remote code through a shell" },
-    { "pattern": "\\b(shutil\\.rmtree|os\\.system|subprocess\\.(?:call|run|Popen))\\b[^\\n]*['\"]\\/", "reason": "Interpreter root wipe", "description": "delete everything on the system through an interpreter" }
+    { "pattern": "\\b(shutil\\.rmtree|os\\.system|subprocess\\.(?:call|run|Popen))\\b[^\\n]*['\"]\\/", "reason": "Interpreter root wipe", "description": "delete everything on the system through an interpreter" },
+    { "pattern": "(?:^|[;&|()]\\s*)(?:(?:sudo|command)\\s+|env\\s+(?:(?:-[^\\s]+|[A-Za-z_][A-Za-z0-9_]*=\\S+)\\s+)*\\s*)?(?:[^\\s;&|()]+/)?(?:setsid|nohup|daemonize|disown|systemd-run)\\b", "reason": "Detached process", "description": "start a process outside Ask Omar's Stop and timeout controls" }
   ],
   "confirmRequired": [
     { "pattern": "\\b(shutdown|reboot|halt|poweroff)\\b", "reason": "System power control", "description": "shut down or restart the system, which can discard unsaved work or interrupt file operations" },

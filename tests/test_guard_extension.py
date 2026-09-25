@@ -1,7 +1,9 @@
 import json
 import os
+import signal
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from urllib.parse import quote
@@ -57,6 +59,8 @@ def run_broker(
     restart_after: int | None = None,
     advance_clock_after: int | None = None,
     initial_grant_until: int = 0,
+    config_home: str | None = None,
+    direct_spawn: bool = True,
 ) -> dict:
     script = """
 import guard from %s;
@@ -117,20 +121,28 @@ process.stdout.write(JSON.stringify({ results, prompts, active, hasTool: tool !=
         json.dumps(restart_after),
         json.dumps(settle_after),
     )
-    with tempfile.TemporaryDirectory() as directory:
+    temporary = tempfile.TemporaryDirectory() if config_home is None else None
+    directory = config_home or temporary.name
+    try:
+        environment = {
+            **os.environ,
+            "XDG_CONFIG_HOME": directory,
+            "ASK_OMAR_SYSTEM_ACCESS": mode,
+            "ASK_OMAR_GRANT_UNTIL": str(initial_grant_until),
+        }
+        if direct_spawn:
+            environment["ASK_OMAR_TEST_DIRECT_SPAWN"] = "1"
         result = subprocess.run(
             node_command(script),
             check=True,
             capture_output=True,
             text=True,
             timeout=10,
-            env={
-                **os.environ,
-                "XDG_CONFIG_HOME": directory,
-                "ASK_OMAR_SYSTEM_ACCESS": mode,
-                "ASK_OMAR_GRANT_UNTIL": str(initial_grant_until),
-            },
+            env=environment,
         )
+    finally:
+        if temporary is not None:
+            temporary.cleanup()
     return json.loads(result.stdout)
 
 
@@ -208,12 +220,32 @@ class GuardExtensionTests(unittest.TestCase):
             "confirm",
         )
 
+    def test_indirect_access_mode_write_is_restored_after_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_dir = Path(directory) / "ask-omar"
+            config_dir.mkdir()
+            config_path = config_dir / "config.toml"
+            original = '[display]\nsystem_access = "ask"\n\n[agent]\nprovider = "openai-codex"\nsystem_access = "ask"\n'
+            config_path.write_text(original)
+            command = (
+                "python -c \"import os; from pathlib import Path; "
+                "p=Path(os.environ['XDG_CONFIG_HOME'])/'ask-omar'/('config'+'.toml'); "
+                "p.write_text('[agent]\\\\nsystem_'+'access = \\\"\\\"\\\"full\\\"\\\"\\\"\\\\n')\""
+            )
+            payload = run_broker(
+                [command],
+                choices=["Allow once"],
+                config_home=directory,
+            )
+            self.assertNotIn("guard tampering", payload["results"][0].get("error", ""))
+            self.assertEqual(config_path.read_text(), original)
+
     def test_empty_hard_blocks_fall_back_to_defaults_via_example_shape(self):
         # evaluateCommand uses the config it is given; loadConfig restores defaults.
         # Empty hardBlocked in a hand-built config is still empty here — assert the
         # example and DEFAULT stay populated so install/migration cannot ship empty.
         self.assertGreater(len(CONFIG["hardBlocked"]), 0)
-        self.assertEqual(CONFIG["version"], 4)
+        self.assertEqual(CONFIG["version"], 5)
 
     def test_every_non_blocked_shell_command_requires_confirmation(self):
         self.assertEqual(evaluate("true")["kind"], "confirm")
@@ -318,12 +350,43 @@ class GuardExtensionTests(unittest.TestCase):
         )
         self.assertIn("64 KiB", payload["results"][0]["error"])
 
-    def test_broker_settles_when_detached_descendant_keeps_output_open(self):
-        payload = run_broker(
-            ["setsid sh -c 'yes escaped-output' &"],
-            choices=["Allow once"],
-        )
-        self.assertIn("64 KiB", payload["results"][0]["error"])
+    def test_daemonizing_commands_are_hard_blocked(self):
+        for command in (
+            "setsid sleep 1000 &",
+            "nohup sleep 1000 &",
+            "systemd-run --user sleep 1000",
+            "env systemd-run --user sleep 1000",
+            "env FOO=bar /usr/bin/systemd-run --user sleep 1000",
+        ):
+            with self.subTest(command=command):
+                payload = run_broker([command], mode="full", has_ui=False)
+                self.assertIn("outside Ask Omar's Stop and timeout controls", payload["results"][0]["error"])
+
+        for command in ("printf nohup", "man setsid", "grep -R systemd-run ."):
+            with self.subTest(command=command):
+                self.assertNotEqual(evaluate(command)["kind"], "block")
+
+    def test_output_limit_kills_descendant_that_escapes_the_process_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_path = Path(directory) / "escaped.pid"
+            command = (
+                "python -c \"import os,time; pid=os.fork(); "
+                "time.sleep(1000) if pid else (getattr(os,'set'+'sid')(), "
+                f"open('{pid_path}','w').write(str(os.getpid())), "
+                "print('x'*70000, flush=True), time.sleep(1000))\""
+            )
+            payload = run_broker([command], choices=["Allow once"])
+            self.assertIn("64 KiB", payload["results"][0]["error"])
+            pid = int(pid_path.read_text())
+            for _ in range(20):
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    break
+                time.sleep(0.05)
+            else:
+                os.kill(pid, signal.SIGKILL)
+                self.fail("escaped descendant survived the broker output limit")
 
     def test_version_one_default_rules_are_migrated_on_load(self):
         legacy = dict(CONFIG)
@@ -376,7 +439,7 @@ try {
             )
             migrated = json.loads(path.read_text())
 
-        self.assertEqual(migrated["version"], 4)
+        self.assertEqual(migrated["version"], 5)
         self.assertNotIn("safeExceptions", migrated)
         self.assertFalse(any(rule["pattern"] == power["pattern"] for rule in migrated["hardBlocked"]))
         self.assertTrue(any(rule["pattern"] == power["pattern"] for rule in migrated["confirmRequired"]))

@@ -13,10 +13,11 @@
  * an agent cannot turn the brake off by rewriting its own config.
  */
 
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -33,7 +34,7 @@ interface GuardConfig {
   confirmRequired: PatternRule[];
 }
 
-const GUARD_CONFIG_VERSION = 4;
+const GUARD_CONFIG_VERSION = 5;
 const LEGACY_POWER_PATTERN = "\\b(shutdown|reboot|halt|poweroff)\\b";
 const LEGACY_ROOT_WIPE_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/\\s*$";
 const ROOT_WIPE_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/[\\s'\"]*(?:$|[;&|])";
@@ -78,6 +79,11 @@ const DEFAULT_CONFIG: GuardConfig = {
       reason: "Interpreter root wipe",
       description: "delete everything on the system through an interpreter",
     },
+    {
+      pattern: "(?:^|[;&|()]\\s*)(?:(?:sudo|command)\\s+|env\\s+(?:(?:-[^\\s]+|[A-Za-z_][A-Za-z0-9_]*=\\S+)\\s+)*\\s*)?(?:[^\\s;&|()]+/)?(?:setsid|nohup|daemonize|disown|systemd-run)\\b",
+      reason: "Detached process",
+      description: "start a process outside Ask Omar's Stop and timeout controls",
+    },
   ],
   confirmRequired: [
     { pattern: LEGACY_POWER_PATTERN, reason: "System power control", description: "shut down or restart the system, which can discard unsaved work or interrupt file operations" },
@@ -103,6 +109,66 @@ const DEFAULT_CONFIG: GuardConfig = {
 function configPath(): string {
   const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
   return join(configHome, "ask-omar", "guard.json");
+}
+
+function accessConfigPath(): string {
+  const configHome = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  return join(configHome, "ask-omar", "config.toml");
+}
+
+interface AccessConfigSnapshot {
+  path: string;
+  contents: Buffer | null;
+}
+
+function snapshotAccessConfig(): AccessConfigSnapshot {
+  const path = accessConfigPath();
+  try {
+    return { path, contents: readFileSync(path) };
+  } catch {
+    return { path, contents: null };
+  }
+}
+
+function configuredAccessMode(contents: string): AccessMode | null {
+  let inAgent = false;
+  for (const line of contents.split("\n")) {
+    const table = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?$/);
+    if (table) {
+      inAgent = table[1].trim() === "agent";
+      continue;
+    }
+    if (!inAgent) continue;
+    const match = line.match(/^\s*system_access\s*=\s*["'](ask|off|full)["']\s*(?:#.*)?$/);
+    if (match) return match[1] as AccessMode;
+    if (/^\s*system_access\s*=/.test(line)) return null;
+  }
+  return "ask";
+}
+
+function restoreAccessConfig(snapshot: AccessConfigSnapshot, expectedMode: AccessMode): void {
+  let current: Buffer | null = null;
+  try {
+    current = readFileSync(snapshot.path);
+  } catch {
+    // A missing file means Ask First, unless another mode was explicitly active.
+  }
+  const currentMode = current === null ? "ask" : configuredAccessMode(current.toString("utf8"));
+  if (currentMode === expectedMode) return;
+
+  try {
+    if (snapshot.contents === null) {
+      unlinkSync(snapshot.path);
+      return;
+    }
+    mkdirSync(dirname(snapshot.path), { recursive: true, mode: 0o700 });
+    const temporary = `${snapshot.path}.guard-${process.pid}-${randomUUID()}`;
+    writeFileSync(temporary, snapshot.contents, { mode: 0o600 });
+    renameSync(temporary, snapshot.path);
+  } catch {
+    // The service still holds the authoritative in-memory mode. A later config
+    // write or service restart will surface the filesystem error to the user.
+  }
 }
 
 function looksLikeGuardTampering(command: string): boolean {
@@ -262,13 +328,54 @@ function stopProcess(pid: number | undefined, signal: NodeJS.Signals): void {
   }
 }
 
+function stopCommandProcesses(
+  unitName: string | null,
+  commandId: string,
+  rootPid: number | undefined,
+  signal: NodeJS.Signals,
+): void {
+  if (unitName) {
+    const killer = spawn(
+      "systemctl",
+      ["--user", "kill", `--signal=${signal}`, "--kill-whom=all", `${unitName}.scope`],
+      { detached: false, stdio: "ignore" },
+    );
+    killer.on("error", () => {});
+    killer.unref();
+  }
+  stopProcess(rootPid, signal);
+  const marker = Buffer.from(`ASK_OMAR_COMMAND_ID=${commandId}`);
+  try {
+    for (const entry of readdirSync("/proc")) {
+      if (!/^\d+$/.test(entry) || Number(entry) === process.pid) continue;
+      try {
+        if (!readFileSync(`/proc/${entry}/environ`).includes(marker)) continue;
+        const pid = Number(entry);
+        try { process.kill(pid, signal); } catch {}
+        stopProcess(pid, signal);
+      } catch {
+        // Processes may exit while /proc is being scanned.
+      }
+    }
+  } catch {
+    // The systemd scope remains the primary process boundary.
+  }
+}
+
 function executeShell(command: string, cwd: string, signal?: AbortSignal): Promise<CommandResult> {
   if (signal?.aborted) throw new Error("Command cancelled before it started.");
 
   return new Promise((resolve, reject) => {
-    const child = spawn("/bin/bash", ["-lc", command], {
+    const commandId = randomUUID();
+    const directSpawn = process.env.ASK_OMAR_TEST_DIRECT_SPAWN === "1";
+    const unitName = directSpawn ? null : `ask-omar-command-${randomUUID()}`;
+    const executable = directSpawn ? "/bin/bash" : "systemd-run";
+    const args = directSpawn
+      ? ["-lc", command]
+      : ["--user", "--scope", "--quiet", "--collect", "--unit", unitName!, "/bin/bash", "-lc", command];
+    const child = spawn(executable, args, {
       cwd,
-      env: process.env,
+      env: { ...process.env, ASK_OMAR_COMMAND_ID: commandId },
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -281,8 +388,9 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
     let killTimer: NodeJS.Timeout | undefined;
     let settled = false;
 
-    const finish = (code: number | null) => {
+    const finish = (code: number | null, afterEscalation = false) => {
       if (settled) return;
+      if (killTimer && !afterEscalation) return;
       settled = true;
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
@@ -298,12 +406,12 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
     };
 
     const terminate = () => {
-      stopProcess(child.pid, "SIGTERM");
+      stopCommandProcesses(unitName, commandId, child.pid, "SIGTERM");
       killTimer ??= setTimeout(() => {
-        stopProcess(child.pid, "SIGKILL");
+        stopCommandProcesses(unitName, commandId, child.pid, "SIGKILL");
         child.stdout.destroy();
         child.stderr.destroy();
-        finish(null);
+        finish(null, true);
       }, 1000);
       killTimer.unref();
     };
@@ -400,7 +508,13 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const result = await executeShell(command, ctx.cwd, signal);
+      const accessSnapshot = snapshotAccessConfig();
+      let result: CommandResult;
+      try {
+        result = await executeShell(command, ctx.cwd, signal);
+      } finally {
+        restoreAccessConfig(accessSnapshot, mode);
+      }
       if (result.aborted) throw new Error("Command cancelled.");
       if (result.timedOut) throw new Error("Command stopped after 60 seconds.");
       if (result.outputLimited) throw new Error("Command stopped after producing 64 KiB of output.");

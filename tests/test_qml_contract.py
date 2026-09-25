@@ -418,7 +418,7 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertTrue(guard_example.exists())
         import json
         config = json.loads(guard_example.read_text())
-        self.assertEqual(config["version"], 4)
+        self.assertEqual(config["version"], 5)
         self.assertIn("hardBlocked", config)
         self.assertIn("confirmRequired", config)
         self.assertNotIn("safeExceptions", config)
