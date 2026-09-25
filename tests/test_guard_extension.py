@@ -56,6 +56,7 @@ def run_broker(
     settle_after: int | None = None,
     restart_after: int | None = None,
     advance_clock_after: int | None = None,
+    initial_grant_until: int = 0,
 ) -> dict:
     script = """
 import guard from %s;
@@ -127,6 +128,7 @@ process.stdout.write(JSON.stringify({ results, prompts, active, hasTool: tool !=
                 **os.environ,
                 "XDG_CONFIG_HOME": directory,
                 "ASK_OMAR_SYSTEM_ACCESS": mode,
+                "ASK_OMAR_GRANT_UNTIL": str(initial_grant_until),
             },
         )
     return json.loads(result.stdout)
@@ -229,7 +231,7 @@ class GuardExtensionTests(unittest.TestCase):
         payload = run_broker([command], choices=["Deny"])
         self.assertEqual(
             payload["prompts"][0]["options"],
-            ["Allow once", "Allow for this question", "Deny"],
+            ["Allow once", "Allow for 15 minutes", "Deny"],
         )
         self.assertIn(f"Command: {command}", payload["prompts"][0]["title"])
         self.assertIn("Command denied", payload["results"][0]["error"])
@@ -243,40 +245,48 @@ class GuardExtensionTests(unittest.TestCase):
         self.assertIn("Command denied", payload["results"][1]["error"])
         self.assertEqual(len(payload["prompts"]), 2)
 
-    def test_question_grant_skips_later_prompts_and_settled_revokes_it(self):
+    def test_temporary_grant_survives_settlement_between_requests(self):
         payload = run_broker(
             ["printf first", "printf second", "printf third"],
-            choices=["Allow for this question", "Deny"],
+            choices=["Allow for 15 minutes"],
             settle_after=2,
         )
         self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "first")
         self.assertEqual(payload["results"][1]["result"]["content"][0]["text"], "second")
-        self.assertIn("Command denied", payload["results"][2]["error"])
-        self.assertEqual(len(payload["prompts"]), 2)
+        self.assertEqual(payload["results"][2]["result"]["content"][0]["text"], "third")
+        self.assertEqual(len(payload["prompts"]), 1)
 
-    def test_question_grant_survives_internal_agent_restart(self):
+    def test_temporary_grant_survives_internal_agent_restart(self):
         payload = run_broker(
             ["printf first", "printf second"],
-            choices=["Allow for this question"],
+            choices=["Allow for 15 minutes"],
             restart_after=1,
         )
         self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "first")
         self.assertEqual(payload["results"][1]["result"]["content"][0]["text"], "second")
         self.assertEqual(len(payload["prompts"]), 1)
 
-    def test_question_grant_cannot_enable_allow_all(self):
+    def test_temporary_grant_is_restored_when_pi_restarts(self):
+        payload = run_broker(
+            ["printf restored"],
+            initial_grant_until=4_102_444_800_000,
+        )
+        self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "restored")
+        self.assertEqual(payload["prompts"], [])
+
+    def test_temporary_grant_cannot_enable_allow_all(self):
         payload = run_broker(
             ["printf first", "ask-omar set-access full"],
-            choices=["Allow for this question"],
+            choices=["Allow for 15 minutes"],
         )
         self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "first")
         self.assertIn("command guard", payload["results"][1]["error"])
         self.assertEqual(len(payload["prompts"]), 1)
 
-    def test_question_grant_expires_after_fifteen_minutes(self):
+    def test_temporary_grant_expires_after_fifteen_minutes(self):
         payload = run_broker(
             ["printf first", "printf second"],
-            choices=["Allow for this question", "Deny"],
+            choices=["Allow for 15 minutes", "Deny"],
             advance_clock_after=1,
         )
         self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "first")

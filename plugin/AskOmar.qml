@@ -2845,7 +2845,7 @@ BarWidget {
                 foreground: root.foreground
                 accent: root.accent
                 enabled: !root.accessSaving
-                tooltipText: "Approve each shell command once or for the current request"
+                tooltipText: "Approve one shell command or allow commands for 15 minutes"
                 Accessible.name: (root.healthSystemAccess === "ask" ? "Selected: " : "") + tooltipText
                 onClicked: root.selectSystemAccess("ask")
               }
@@ -2883,7 +2883,7 @@ BarWidget {
                 ? "Omar cannot run shell commands."
                 : root.healthSystemAccess === "full"
                   ? "Commands run without asking. Known catastrophic commands remain blocked."
-                  : "Approve one command, or allow commands for the rest of this request."
+                  : "Approve one command, or allow commands for the next 15 minutes."
               wrapMode: Text.WordWrap
               color: Qt.darker(root.foreground, 1.35)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3075,7 +3075,7 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Approve a command once, or allow commands for the rest of this request."
+                text: "Approve one command, or allow commands for the next 15 minutes."
                 wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.35)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3496,7 +3496,8 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Allow once runs only this command. Allow for this question expires after 15 minutes or when Omar finishes."
+                text: "Allow once runs only this command. Allow for 15 minutes also covers commands in your next requests."
+                wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.5)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -3534,16 +3535,16 @@ BarWidget {
               }
 
               Button {
-                text: "Allow for this question"
+                text: "Allow for 15 minutes"
                 focusable: true
                 bordered: true
                 foreground: root.foreground
                 accent: root.accent
                 fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
                 fontSize: Style.font.bodySmall
-                Accessible.name: "Allow commands until this question finishes"
+                Accessible.name: "Allow shell commands for 15 minutes"
                 Keys.onEscapePressed: root.respondToConfirmation("Deny")
-                onClicked: root.respondToConfirmation("Allow for this question")
+                onClicked: root.respondToConfirmation("Allow for 15 minutes")
               }
             }
           }

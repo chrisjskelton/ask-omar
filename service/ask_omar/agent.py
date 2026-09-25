@@ -101,8 +101,9 @@ class PiAgent:
     confirmation_timeout_seconds = 90
     max_rpc_event_bytes = 4 * 1024 * 1024
     max_log_bytes = 1024 * 1024
+    temporary_grant_ms = 15 * 60 * 1000
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, temporary_grant_until: int = 0):
         self.config = config
         self.process: subprocess.Popen[bytes] | None = None
         self.buffer = b""
@@ -116,6 +117,12 @@ class PiAgent:
         self.activity_message = "Ready."
         self.query_active = False
         self.last_tools_used: list[str] = []
+        self.last_tool_description = ""
+        self.last_tool_completed = False
+        self.last_tool_failed = False
+        self.last_tool_call_id = ""
+        self.active_tool_descriptions: dict[str, str] = {}
+        self.temporary_grant_until = temporary_grant_until
         self.pending_confirmation: dict[str, Any] | None = None
         self.confirmation_lock = threading.Lock()
         self.confirmation_event = threading.Event()
@@ -178,6 +185,7 @@ class PiAgent:
             os.chmod(log_path, 0o600)
             environment = os.environ.copy()
             environment["ASK_OMAR_SYSTEM_ACCESS"] = self.config.system_access
+            environment["ASK_OMAR_GRANT_UNTIL"] = str(self.temporary_grant_until)
             self.process = subprocess.Popen(
                 self.command(),
                 stdin=subprocess.PIPE,
@@ -269,13 +277,13 @@ class PiAgent:
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise AgentError("Omar's AI response timed out.", "pi_timeout")
+                raise AgentError(self.timeout_message(), "pi_timeout")
             wait = remaining if poll_interval is None else min(remaining, poll_interval)
             ready = selector.select(wait)
             if not ready:
                 if poll_interval is not None and time.monotonic() < deadline:
                     return None
-                raise AgentError("Omar's AI response timed out.", "pi_timeout")
+                raise AgentError(self.timeout_message(), "pi_timeout")
             assert self.process and self.process.stdout
             chunk = os.read(self.process.stdout.fileno(), 65536)
             if not chunk:
@@ -343,6 +351,11 @@ class PiAgent:
         with self.lock:
             self._set_activity("Starting Pi…", True)
             self.last_tools_used = []
+            self.last_tool_description = ""
+            self.last_tool_completed = False
+            self.last_tool_failed = False
+            self.last_tool_call_id = ""
+            self.active_tool_descriptions = {}
             try:
                 return self._query_locked(message, cancel_event)
             finally:
@@ -387,7 +400,7 @@ class PiAgent:
                     if event is None:
                         continue
                     if event.get("type") == "tool_execution_start":
-                        tool_name = str(event.get("toolName", "tool")).strip() or "tool"
+                        tool_name = self._record_tool_start(event)
                         status = (
                             "Checking files…"
                             if tool_name in {"read", "grep", "find", "ls"}
@@ -396,9 +409,8 @@ class PiAgent:
                             else "Working…"
                         )
                         self._set_activity(status)
-                        if tool_name not in self.last_tools_used:
-                            self.last_tools_used.append(tool_name)
                     elif event.get("type") == "tool_execution_end":
+                        self._record_tool_end(event)
                         self._set_activity("Thinking…")
                     elif event.get("type") == "extension_ui_request":
                         method = str(event.get("method", ""))
@@ -437,11 +449,13 @@ class PiAgent:
                         if response is None:
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "cancelled": True})
                             raise AgentError(
-                                "Command approval timed out. Use Allow once, Allow for this question, or Deny next time — "
+                                "Command approval timed out. Use Allow once, Allow for 15 minutes, or Deny next time — "
                                 "Omar will not ask for the same approval in chat.",
                                 "confirmation_timeout",
                             )
                         elif method == "select":
+                            if response == "Allow for 15 minutes":
+                                self.temporary_grant_until = int(time.time() * 1000) + self.temporary_grant_ms
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "value": response})
                         elif method == "confirm":
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "confirmed": response.lower() in ("allow", "yes", "true")})
@@ -478,6 +492,57 @@ class PiAgent:
                 selector.close()
 
             return self.finish_response(final_answer, error_message)
+
+    @staticmethod
+    def _describe_tool(event: dict, tool_name: str) -> str:
+        args = event.get("args")
+        if tool_name == "run_command" and isinstance(args, dict):
+            command = " ".join(str(args.get("command", "")).split())
+            if command:
+                if len(command) > 160:
+                    command = command[:157] + "…"
+                return f"shell command “{command}”"
+        return f"the {tool_name} tool"
+
+    def _record_tool_start(self, event: dict) -> str:
+        tool_name = str(event.get("toolName", "tool")).strip() or "tool"
+        tool_call_id = str(event.get("toolCallId", ""))
+        description = self._describe_tool(event, tool_name)
+        self.last_tool_call_id = tool_call_id
+        self.last_tool_description = description
+        self.last_tool_completed = False
+        self.last_tool_failed = False
+        if tool_call_id:
+            self.active_tool_descriptions[tool_call_id] = description
+        if tool_name not in self.last_tools_used:
+            self.last_tools_used.append(tool_name)
+        return tool_name
+
+    def _record_tool_end(self, event: dict) -> None:
+        tool_call_id = str(event.get("toolCallId", ""))
+        description = self.active_tool_descriptions.get(tool_call_id, self.last_tool_description)
+        if tool_call_id:
+            self.active_tool_descriptions.pop(tool_call_id, None)
+        self.last_tool_call_id = tool_call_id
+        self.last_tool_description = description
+        self.last_tool_completed = True
+        self.last_tool_failed = bool(event.get("isError", False))
+
+    def revoke_temporary_grant(self) -> None:
+        self.temporary_grant_until = 0
+
+    def timeout_message(self) -> str:
+        if self.active_tool_descriptions:
+            description = next(reversed(self.active_tool_descriptions.values()))
+            action = "running" if description.startswith("shell command ") else "using"
+            return f"Omar's AI response timed out while {action} {description}."
+        if not self.last_tool_description:
+            return "Omar's AI response timed out."
+        if self.last_tool_failed:
+            return f"Omar's AI response timed out after {self.last_tool_description} returned an error."
+        action = "running" if self.last_tool_description.startswith("shell command ") else "using"
+        timing = f"after {action}" if self.last_tool_completed else f"while {action}"
+        return f"Omar's AI response timed out {timing} {self.last_tool_description}."
 
     @staticmethod
     def _text_from_message(message: dict) -> str:

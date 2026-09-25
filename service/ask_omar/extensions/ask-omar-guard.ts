@@ -4,7 +4,7 @@
  * Pi's built-in bash tool is disabled by the launcher. This extension exposes
  * the only model-controlled shell path, enforces the internal off / ask / full
  * modes, and bounds command runtime and output. Ask First shows exact commands,
- * supports a short grant for the current request, and hard-blocks catastrophic
+ * supports a short grant across requests, and hard-blocks catastrophic
  * patterns. Mandatory hard blocks remain active in Allow All.
  *
  * Config: ~/.config/ask-omar/guard.json (auto-created with defaults on
@@ -244,7 +244,7 @@ interface CommandResult {
 }
 
 const COMMAND_TIMEOUT_MS = 60_000;
-const QUESTION_GRANT_MS = 15 * 60_000;
+const TEMPORARY_GRANT_MS = 15 * 60_000;
 const OUTPUT_LIMIT_BYTES = 64 * 1024;
 const COMMAND_LIMIT_BYTES = 32 * 1024;
 
@@ -344,19 +344,13 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
 
 export default function (pi: ExtensionAPI) {
   const mode = accessMode();
-  let questionGrantUntil = 0;
-  const revokeQuestionGrant = () => {
-    questionGrantUntil = 0;
-  };
+  let temporaryGrantUntil = Number.parseInt(process.env.ASK_OMAR_GRANT_UNTIL ?? "0", 10) || 0;
 
   pi.on("session_start", () => {
-    revokeQuestionGrant();
     const active = pi.getActiveTools().filter((name) => name !== "bash");
     if (mode !== "off" && !active.includes("run_command")) active.push("run_command");
     pi.setActiveTools(active);
   });
-  pi.on("agent_settled", revokeQuestionGrant);
-  pi.on("session_shutdown", revokeQuestionGrant);
 
   if (mode === "off") return;
 
@@ -385,7 +379,7 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (mode === "ask") {
-        if (Date.now() >= questionGrantUntil) {
+        if (Date.now() >= temporaryGrantUntil) {
           if (!ctx.hasUI) {
             throw new Error(
               "Ask Omar blocked this command because approval is required and the approval panel is unavailable.",
@@ -394,10 +388,10 @@ export default function (pi: ExtensionAPI) {
           const title = `Omar wants to ${decision.rule.description}\nCommand: ${command}`;
           const choice = await ctx.ui.select(
             title,
-            ["Allow once", "Allow for this question", "Deny"],
+            ["Allow once", "Allow for 15 minutes", "Deny"],
           );
-          if (choice === "Allow for this question") {
-            questionGrantUntil = Date.now() + QUESTION_GRANT_MS;
+          if (choice === "Allow for 15 minutes") {
+            temporaryGrantUntil = Date.now() + TEMPORARY_GRANT_MS;
           } else if (choice !== "Allow once") {
             throw new Error(
               `Command denied (${decision.rule.reason}). Do not ask for the same permission in chat.`,

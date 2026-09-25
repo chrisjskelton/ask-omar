@@ -118,6 +118,56 @@ class AgentResponseLifecycleTests(unittest.TestCase):
             with self.assertRaisesRegex(AgentError, "oversized event"):
                 agent._next_event(selector, time.monotonic() + 1)
 
+    def test_timeout_identifies_the_last_completed_shell_command(self):
+        agent = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low"))
+        agent.last_tool_description = "shell command “hyprctl clients -j”"
+        agent.last_tool_completed = True
+        with selectors.DefaultSelector() as selector:
+            with self.assertRaisesRegex(
+                AgentError,
+                "timed out after running shell command “hyprctl clients -j”",
+            ):
+                agent._next_event(selector, time.monotonic() - 1)
+
+    def test_timeout_identifies_an_outstanding_parallel_tool(self):
+        agent = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low"))
+        agent._record_tool_start({
+            "toolCallId": "call-a",
+            "toolName": "run_command",
+            "args": {"command": "sleep 30"},
+        })
+        agent._record_tool_start({"toolCallId": "call-b", "toolName": "read", "args": {}})
+        agent._record_tool_end({"toolCallId": "call-b", "toolName": "read"})
+        self.assertEqual(
+            agent.timeout_message(),
+            "Omar's AI response timed out while running shell command “sleep 30”.",
+        )
+
+    def test_timeout_uses_last_completed_parallel_tool_and_reports_errors_honestly(self):
+        agent = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low"))
+        agent._record_tool_start({"toolCallId": "call-a", "toolName": "read", "args": {}})
+        agent._record_tool_start({
+            "toolCallId": "call-b",
+            "toolName": "run_command",
+            "args": {"command": "rm /tmp/example"},
+        })
+        agent._record_tool_end({"toolCallId": "call-b", "toolName": "run_command", "isError": True})
+        agent._record_tool_end({"toolCallId": "call-a", "toolName": "read", "isError": False})
+        self.assertEqual(
+            agent.timeout_message(),
+            "Omar's AI response timed out after using the read tool.",
+        )
+        agent._record_tool_start({
+            "toolCallId": "call-c",
+            "toolName": "run_command",
+            "args": {"command": "rm /tmp/example"},
+        })
+        agent._record_tool_end({"toolCallId": "call-c", "toolName": "run_command", "isError": True})
+        self.assertEqual(
+            agent.timeout_message(),
+            "Omar's AI response timed out after shell command “rm /tmp/example” returned an error.",
+        )
+
 
 class AgentQueryTests(unittest.TestCase):
     def test_abort_sends_supported_pi_rpc_command_once(self):
@@ -138,7 +188,7 @@ class AgentQueryTests(unittest.TestCase):
         agent.pending_confirmation = {
             "id": "request-1",
             "method": "select",
-            "options": ["Allow once", "Allow for this question", "Deny"],
+            "options": ["Allow once", "Allow for 15 minutes", "Deny"],
         }
         self.assertTrue(agent.respond_confirmation("request-1", "Allow once"))
         self.assertTrue(agent.confirmation_event.is_set())
@@ -149,7 +199,7 @@ class AgentQueryTests(unittest.TestCase):
         agent.pending_confirmation = {
             "id": "current",
             "method": "select",
-            "options": ["Allow once", "Allow for this question", "Deny"],
+            "options": ["Allow once", "Allow for 15 minutes", "Deny"],
         }
         self.assertFalse(agent.respond_confirmation("stale", "Allow once"))
         self.assertFalse(agent.respond_confirmation("current", "Always"))
@@ -189,8 +239,13 @@ class AgentQueryTests(unittest.TestCase):
                     "type": "message_update",
                     "assistantMessageEvent": {"type": "text_delta", "delta": "intermediate"},
                 },
-                {"type": "tool_execution_start", "toolName": "run_command"},
-                {"type": "tool_execution_end"},
+                {
+                    "type": "tool_execution_start",
+                    "toolCallId": "call-1",
+                    "toolName": "run_command",
+                    "args": {"command": "hyprctl clients -j"},
+                },
+                {"type": "tool_execution_end", "toolCallId": "call-1"},
                 {
                     "type": "message_update",
                     "assistantMessageEvent": {"type": "text_delta", "delta": "I found the window."},
@@ -216,6 +271,8 @@ class AgentQueryTests(unittest.TestCase):
             with patch.object(agent, "start"):
                 self.assertEqual(agent.query("hello"), "Final answer")
             self.assertEqual(agent.last_tools_used, ["run_command"])
+            self.assertEqual(agent.last_tool_description, "shell command “hyprctl clients -j”")
+            self.assertTrue(agent.last_tool_completed)
         finally:
             stdout.close()
             writer.join(timeout=2)
@@ -298,7 +355,7 @@ class AgentQueryTests(unittest.TestCase):
                 "id": "confirm-1",
                 "method": "select",
                 "title": "Omar wants to restart the computer\nCommand: reboot",
-                "options": ["Allow once", "Allow for this question", "Deny"],
+                "options": ["Allow once", "Allow for 15 minutes", "Deny"],
             }) + "\n").encode())
             writer.flush()
             with patch.object(agent, "start"), patch.object(agent, "stop"):
@@ -333,7 +390,7 @@ class AgentQueryTests(unittest.TestCase):
         def allow_soon():
             for _ in range(50):
                 if agent.confirmation():
-                    self.assertTrue(agent.respond_confirmation("confirm-allow", "Allow for this question"))
+                    self.assertTrue(agent.respond_confirmation("confirm-allow", "Allow for 15 minutes"))
                     return
                 time.sleep(0.02)
             self.fail("confirmation never appeared")
@@ -344,7 +401,7 @@ class AgentQueryTests(unittest.TestCase):
                 "id": "confirm-allow",
                 "method": "select",
                 "title": "Omar wants to delete a folder\nCommand: rm -rf /tmp/x",
-                "options": ["Allow once", "Allow for this question", "Deny"],
+                "options": ["Allow once", "Allow for 15 minutes", "Deny"],
             }) + "\n").encode())
             writer.write((json.dumps({
                 "type": "message_end",
@@ -367,7 +424,8 @@ class AgentQueryTests(unittest.TestCase):
         sent = agent.process.stdin.getvalue().decode()
         self.assertIn('"type": "extension_ui_response"', sent)
         self.assertIn('"id": "confirm-allow"', sent)
-        self.assertIn('"value": "Allow for this question"', sent)
+        self.assertIn('"value": "Allow for 15 minutes"', sent)
+        self.assertGreater(agent.temporary_grant_until, int(time.time() * 1000))
         self.assertIsNone(agent.confirmation())
         stdout.close()
 

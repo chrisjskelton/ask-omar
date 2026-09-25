@@ -328,6 +328,7 @@ class AskOmar:
         if not next_provider or not next_model or not next_thinking:
             return {"ok": False, "error": "Provider, model, and reasoning are required."}
         with self.foreground_lock:
+            temporary_grant_until = self.agent.temporary_grant_until if self.agent else 0
             path = self.config_path
             try:
                 update_agent_settings(
@@ -341,7 +342,11 @@ class AskOmar:
             if self.agent:
                 self.agent.stop()
             self.config = Config.load(path)
-            self.agent = PiAgent(self.config) if self.config.backend == "pi" else None
+            self.agent = (
+                PiAgent(self.config, temporary_grant_until)
+                if self.config.backend == "pi"
+                else None
+            )
         readiness = self.health()
         return self.response(
             kind="agent_settings",
@@ -366,6 +371,7 @@ class AskOmar:
             except ValueError as error:
                 return {"ok": False, "error": str(error), "error_code": "invalid_system_access"}
             if self.agent:
+                self.agent.revoke_temporary_grant()
                 self.agent.stop()
             self.config = Config.load(self.config_path)
             self.agent = PiAgent(self.config) if self.config.backend == "pi" else None
@@ -380,6 +386,10 @@ class AskOmar:
         """Wrap developer-toned agent errors with plain-language guidance."""
         lower = message.casefold()
         if "timed out" in lower:
+            prefix = "Omar's AI response timed out"
+            if message.startswith(prefix) and len(message) > len(prefix) + 1:
+                detail = message[len(prefix):].strip().rstrip(".")
+                return f"Omar did not finish {detail}. Try again, or press Retry."
             return "Omar is taking too long to respond. Try again, or rephrase your request."
         if "pi is not installed" in lower:
             return "Omar needs Pi. Install it from https://pi.dev, then run 'ask-omar setup' in a terminal."
@@ -639,6 +649,7 @@ class AskOmar:
         if request_type == "new_conversation":
             with self.foreground_lock:
                 if self.agent:
+                    self.agent.revoke_temporary_grant()
                     self.agent.stop()
             return self.response(kind="conversation", message="Started a new conversation.")
         if request_type == "health":

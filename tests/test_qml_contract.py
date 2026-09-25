@@ -300,7 +300,7 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn('updateSetting("safetyNoticeSeen", true)', QML)
         self.assertIn("Omar can run commands on this computer", QML)
         self.assertIn("Ask First is recommended", QML)
-        self.assertIn("Approve a command once, or allow commands for the rest of this request.", QML)
+        self.assertIn("Approve one command, or allow commands for the next 15 minutes.", QML)
         self.assertIn("Want fewer prompts? Choose a different mode in Settings → Safety.", QML)
 
     def test_dictation_availability_detection(self):
@@ -329,9 +329,11 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("Review shell command", QML)
         self.assertIn('"Allow the command once"', QML)
         self.assertIn('"Deny the command"', QML)
-        self.assertIn("Allow for this question expires after 15 minutes", QML)
+        self.assertIn("Allow for 15 minutes also covers commands in your next requests", QML)
         self.assertIn('root.respondToConfirmation("Allow once")', QML)
-        self.assertIn('root.respondToConfirmation("Allow for this question")', QML)
+        self.assertIn('root.respondToConfirmation("Allow for 15 minutes")', QML)
+        confirmation_block = QML[QML.index("Review shell command"):QML.index("// Slow hint is folded")]
+        self.assertIn("wrapMode: Text.WordWrap", confirmation_block)
         self.assertNotIn("opacity: 0.12", QML)
 
     def test_activity_is_discreet_and_inline(self):

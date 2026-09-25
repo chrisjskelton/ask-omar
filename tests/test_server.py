@@ -141,6 +141,10 @@ class LocalAnswerTests(unittest.TestCase):
 
     def test_friendly_error_maps_known_messages(self):
         self.assertIn("too long", AskOmar.friendly_error("Omar's AI response timed out."))
+        detailed = AskOmar.friendly_error(
+            "Omar's AI response timed out after running shell command “hyprctl clients -j”."
+        )
+        self.assertIn("after running shell command “hyprctl clients -j”", detailed)
         self.assertIn("ask-omar setup", AskOmar.friendly_error("Pi is not installed. Run setup."))
         self.assertIn("reach Pi", AskOmar.friendly_error("Pi could not be reached."))
         self.assertIn("rephrasing", AskOmar.friendly_error("Omar did not receive an answer from Pi."))
@@ -278,7 +282,7 @@ class LocalAnswerTests(unittest.TestCase):
             "id": "abc",
             "method": "select",
             "title": "Omar wants to delete a folder\nCommand: rm -r /tmp/x",
-            "options": ["Allow once", "Allow for this question", "Deny"],
+            "options": ["Allow once", "Allow for 15 minutes", "Deny"],
         }
         self.omar.agent = agent
         result = self.omar.handle({"type": "activity"})
@@ -318,6 +322,7 @@ class LocalAnswerTests(unittest.TestCase):
         agent = Mock()
         self.omar.agent = agent
         result = self.omar.handle({"type": "new_conversation"})
+        agent.revoke_temporary_grant.assert_called_once_with()
         agent.stop.assert_called_once_with()
         self.assertTrue(result["ok"])
 
@@ -499,11 +504,13 @@ class LocalAnswerTests(unittest.TestCase):
         )
         self.omar.config_path = config_path
         old_agent = Mock()
+        old_agent.temporary_grant_until = 123456
         self.omar.agent = old_agent
         with patch("ask_omar.server.PiAgent") as agent_cls:
             agent_cls.return_value = Mock()
             result = self.omar.set_agent(model="gpt-5.6-terra", thinking="high")
         old_agent.stop.assert_called_once()
+        self.assertEqual(agent_cls.call_args.args[1], 123456)
         self.assertTrue(result["ok"])
         self.assertEqual(result["model"], "gpt-5.6-terra")
         self.assertEqual(result["thinking"], "high")
@@ -521,6 +528,7 @@ class LocalAnswerTests(unittest.TestCase):
         with patch("ask_omar.server.PiAgent") as agent_cls:
             agent_cls.return_value = Mock()
             result = self.omar.set_system_access("full")
+        old_agent.revoke_temporary_grant.assert_called_once_with()
         old_agent.stop.assert_called_once()
         self.assertTrue(result["ok"])
         self.assertEqual(result["system_access"], "full")
