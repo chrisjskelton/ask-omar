@@ -54,6 +54,7 @@ def run_broker(
     has_ui: bool = True,
     choices: list[str] | None = None,
     settle_after: int | None = None,
+    restart_after: int | None = None,
     advance_clock_after: int | None = None,
 ) -> dict:
     script = """
@@ -101,6 +102,7 @@ for (let index = 0; index < %s.length; index++) {
     results.push({ error: String(error.message || error) });
   }
   if (%s === index + 1) clock.now += 15 * 60 * 1000;
+  if (%s === index + 1 && handlers.agent_start) await handlers.agent_start({}, {});
   if (%s === index + 1 && handlers.agent_settled) await handlers.agent_settled({}, {});
 }
 process.stdout.write(JSON.stringify({ results, prompts, active, hasTool: tool !== null }));
@@ -111,6 +113,7 @@ process.stdout.write(JSON.stringify({ results, prompts, active, hasTool: tool !=
         json.dumps(commands),
         json.dumps(has_ui),
         json.dumps(advance_clock_after),
+        json.dumps(restart_after),
         json.dumps(settle_after),
     )
     with tempfile.TemporaryDirectory() as directory:
@@ -119,6 +122,7 @@ process.stdout.write(JSON.stringify({ results, prompts, active, hasTool: tool !=
             check=True,
             capture_output=True,
             text=True,
+            timeout=10,
             env={
                 **os.environ,
                 "XDG_CONFIG_HOME": directory,
@@ -185,6 +189,8 @@ class GuardExtensionTests(unittest.TestCase):
             "sed -i 's/system_access = \"ask\"/system_access = \"full\"/' ~/.config/ask-omar/config.toml",
             "echo 'system_access = \"full\"' >> $HOME/.config/ask-omar/config.toml",
             "rm -f /home/example/.config/ask-omar/config.toml",
+            "ask-omar set-access full",
+            "env ask-omar set-access full",
         ):
             with self.subTest(command=command):
                 decision = evaluate(command)
@@ -193,6 +199,10 @@ class GuardExtensionTests(unittest.TestCase):
 
         self.assertEqual(
             evaluate("cat ~/.config/ask-omar/config.toml")["kind"],
+            "confirm",
+        )
+        self.assertEqual(
+            evaluate("sed -i 's/model = \"old\"/model = \"new\"/' ~/.config/ask-omar/config.toml")["kind"],
             "confirm",
         )
 
@@ -244,6 +254,25 @@ class GuardExtensionTests(unittest.TestCase):
         self.assertIn("Command denied", payload["results"][2]["error"])
         self.assertEqual(len(payload["prompts"]), 2)
 
+    def test_question_grant_survives_internal_agent_restart(self):
+        payload = run_broker(
+            ["printf first", "printf second"],
+            choices=["Allow for this question"],
+            restart_after=1,
+        )
+        self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "first")
+        self.assertEqual(payload["results"][1]["result"]["content"][0]["text"], "second")
+        self.assertEqual(len(payload["prompts"]), 1)
+
+    def test_question_grant_cannot_enable_allow_all(self):
+        payload = run_broker(
+            ["printf first", "ask-omar set-access full"],
+            choices=["Allow for this question"],
+        )
+        self.assertEqual(payload["results"][0]["result"]["content"][0]["text"], "first")
+        self.assertIn("command guard", payload["results"][1]["error"])
+        self.assertEqual(len(payload["prompts"]), 1)
+
     def test_question_grant_expires_after_fifteen_minutes(self):
         payload = run_broker(
             ["printf first", "printf second"],
@@ -275,6 +304,13 @@ class GuardExtensionTests(unittest.TestCase):
     def test_broker_stops_excessive_output(self):
         payload = run_broker(
             ["python -c 'print(\"x\" * 70000)'"],
+            choices=["Allow once"],
+        )
+        self.assertIn("64 KiB", payload["results"][0]["error"])
+
+    def test_broker_settles_when_detached_descendant_keeps_output_open(self):
+        payload = run_broker(
+            ["setsid sh -c 'yes escaped-output' &"],
             choices=["Allow once"],
         )
         self.assertIn("64 KiB", payload["results"][0]["error"])

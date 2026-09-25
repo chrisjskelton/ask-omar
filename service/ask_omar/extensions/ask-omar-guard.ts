@@ -106,12 +106,20 @@ function configPath(): string {
 }
 
 function looksLikeGuardTampering(command: string): boolean {
-  const target = /(?:^|[\s"'`/=])((?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?(?:\.config\/ask-omar\/)?guard\.json|(?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?\.config\/ask-omar\/config\.toml|ask-omar-guard\.ts)\b/i;
-  if (!target.test(command)) return false;
-  // Reading the guard is fine; rewriting, replacing, or deleting it is not.
-  return /(?:>>?|tee\b|\bcp\b|\bmv\b|\binstall\b|\bdd\b|\btruncate\b|\bsed\b[^\n]*\s-i|\bperl\b[^\n]*\s-i|\brm\b|\bchmod\b|\bchown\b|\bcat\b\s*>)/i.test(
-    command,
-  );
+  if (/\bask-omar\s+set-access\b/i.test(command)) return true;
+
+  const mutation = /(?:>>?|tee\b|\bcp\b|\bmv\b|\binstall\b|\bdd\b|\btruncate\b|\bsed\b[^\n]*\s-i|\bperl\b[^\n]*\s-i|\brm\b|\bchmod\b|\bchown\b|\bcat\b\s*>)/i;
+  if (!mutation.test(command)) return false;
+
+  const guardTarget = /(?:^|[\s"'`/=])(?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?(?:\.config\/ask-omar\/)?guard\.json\b|ask-omar-guard\.ts\b/i;
+  if (guardTarget.test(command)) return true;
+
+  const configTarget = /(?:^|[\s"'`/=])(?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?\.config\/ask-omar\/config\.toml\b/i;
+  if (!configTarget.test(command)) return false;
+
+  // Provider/model edits are a supported Omar workflow. Block direct access-mode
+  // edits and operations that can replace or remove the complete config file.
+  return /\bsystem_access\b|\b(?:cp|mv|install|dd|truncate|rm|chmod|chown)\b/i.test(command);
 }
 
 function loadConfig(): GuardConfig {
@@ -271,10 +279,32 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
     let timedOut = false;
     let outputLimited = false;
     let killTimer: NodeJS.Timeout | undefined;
+    let settled = false;
+
+    const finish = (code: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      signal?.removeEventListener("abort", abort);
+      resolve({
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        code,
+        aborted,
+        timedOut,
+        outputLimited,
+      });
+    };
 
     const terminate = () => {
       stopProcess(child.pid, "SIGTERM");
-      killTimer ??= setTimeout(() => stopProcess(child.pid, "SIGKILL"), 1000);
+      killTimer ??= setTimeout(() => {
+        stopProcess(child.pid, "SIGKILL");
+        child.stdout.destroy();
+        child.stderr.destroy();
+        finish(null);
+      }, 1000);
       killTimer.unref();
     };
     const append = (target: Buffer[], chunk: Buffer) => {
@@ -301,24 +331,14 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
     timeout.unref();
 
     child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
       signal?.removeEventListener("abort", abort);
       reject(error);
     });
-    child.once("close", (code) => {
-      clearTimeout(timeout);
-      if (killTimer) clearTimeout(killTimer);
-      signal?.removeEventListener("abort", abort);
-      resolve({
-        stdout: Buffer.concat(stdout).toString("utf8"),
-        stderr: Buffer.concat(stderr).toString("utf8"),
-        code,
-        aborted,
-        timedOut,
-        outputLimited,
-      });
-    });
+    child.once("close", finish);
   });
 }
 
@@ -335,7 +355,6 @@ export default function (pi: ExtensionAPI) {
     if (mode !== "off" && !active.includes("run_command")) active.push("run_command");
     pi.setActiveTools(active);
   });
-  pi.on("agent_start", revokeQuestionGrant);
   pi.on("agent_settled", revokeQuestionGrant);
   pi.on("session_shutdown", revokeQuestionGrant);
 
