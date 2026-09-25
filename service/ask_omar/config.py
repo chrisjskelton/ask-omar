@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
+SYSTEM_ACCESS_MODES = ("ask", "off", "full")
 
 
 def _section(raw: dict, name: str) -> dict:
@@ -72,6 +73,7 @@ class Config:
     provider: str = ""
     model: str = ""
     thinking: str = "low"
+    system_access: str = "ask"
     timeout_seconds: int = 90
     conversation_idle_minutes: int = 30
     history_limit: int = 100
@@ -91,11 +93,19 @@ class Config:
         agent = _section(raw, "agent")
         conversation = _section(raw, "conversation")
         history = _section(raw, "history")
+        system_access = _string(agent, "system_access", cls.system_access) or cls.system_access
+        if system_access not in SYSTEM_ACCESS_MODES:
+            raise ValueError(
+                "Ask Omar config system_access must be one of: "
+                + ", ".join(SYSTEM_ACCESS_MODES)
+                + "."
+            )
         return cls(
             backend=_string(agent, "backend", cls.backend),
             provider=_string(agent, "provider", cls.provider),
             model=_string(agent, "model", cls.model),
             thinking=_string(agent, "thinking", cls.thinking) or cls.thinking,
+            system_access=system_access,
             timeout_seconds=_integer(agent, "timeout_seconds", cls.timeout_seconds, 10),
             conversation_idle_minutes=_integer(
                 conversation, "idle_timeout_minutes", cls.conversation_idle_minutes, 0
@@ -110,14 +120,16 @@ def update_agent_settings(
     provider: str | None = None,
     model: str | None = None,
     thinking: str | None = None,
+    system_access: str | None = None,
 ) -> None:
-    """Update [agent] provider/model/thinking while preserving the rest of the file."""
+    """Update [agent] settings while preserving the rest of the file."""
     updates = {
         key: value
         for key, value in {
             "provider": provider,
             "model": model,
             "thinking": thinking,
+            "system_access": system_access,
         }.items()
         if value is not None
     }
@@ -130,6 +142,10 @@ def update_agent_settings(
         raise ValueError(
             "Thinking must be one of: " + ", ".join(THINKING_LEVELS) + "."
         )
+    if "system_access" in updates and updates["system_access"] not in SYSTEM_ACCESS_MODES:
+        raise ValueError(
+            "System access must be one of: " + ", ".join(SYSTEM_ACCESS_MODES) + "."
+        )
 
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     if not text.strip():
@@ -140,6 +156,7 @@ def update_agent_settings(
             f'provider = "{updates.get("provider", "")}"\n'
             f'model = "{updates.get("model", "")}"\n'
             f'thinking = "{updates.get("thinking", Config.thinking)}"\n'
+            f'system_access = "{updates.get("system_access", Config.system_access)}"\n'
             "timeout_seconds = 90\n"
         )
         _atomic_write(path, text)

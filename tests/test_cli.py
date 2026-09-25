@@ -149,6 +149,16 @@ class SetupReportTests(unittest.TestCase):
         self.assertEqual(code, 0)
         send.assert_called_once_with({"type": "health"})
 
+    def test_set_access_command_is_wired_to_system_access_request(self):
+        with (
+            patch("ask_omar.cli.request", return_value={"ok": True}) as send,
+            redirect_stdout(io.StringIO()),
+        ):
+            code = main(["set-access", "full"])
+
+        self.assertEqual(code, 0)
+        send.assert_called_once_with({"type": "set_system_access", "mode": "full"})
+
     def test_query_draft_and_notes_prefer_stdin_over_argv(self):
         with (
             patch("ask_omar.cli.request", return_value={"ok": True}) as send,

@@ -21,6 +21,7 @@ from .actions import (
 )
 from .agent import AgentCancelled, AgentError, OMARCHY_CHEAT_SHEET, PiAgent
 from .config import (
+    SYSTEM_ACCESS_MODES,
     THINKING_LEVELS,
     Config,
     default_config_path,
@@ -351,6 +352,29 @@ class AskOmar:
             message="AI settings saved. New requests use the updated model and reasoning.",
         )
 
+    def set_system_access(self, mode: str) -> dict[str, Any]:
+        mode = mode.strip().lower()
+        if mode not in SYSTEM_ACCESS_MODES:
+            return {
+                "ok": False,
+                "error": "System access must be Ask First, Block Commands, or Allow All.",
+                "error_code": "invalid_system_access",
+            }
+        with self.foreground_lock:
+            try:
+                update_agent_settings(self.config_path, system_access=mode)
+            except ValueError as error:
+                return {"ok": False, "error": str(error), "error_code": "invalid_system_access"}
+            if self.agent:
+                self.agent.stop()
+            self.config = Config.load(self.config_path)
+            self.agent = PiAgent(self.config) if self.config.backend == "pi" else None
+        return self.response(
+            kind="system_access",
+            system_access=self.config.system_access,
+            message="System access updated. New requests use this mode.",
+        )
+
     @staticmethod
     def friendly_error(message: str) -> str:
         """Wrap developer-toned agent errors with plain-language guidance."""
@@ -473,6 +497,7 @@ class AskOmar:
             provider=self.config.provider,
             model=self.config.model,
             thinking=self.config.thinking,
+            system_access=self.config.system_access,
             agent=agent_ready,
             conversation={
                 "storage": "memory",
@@ -626,6 +651,8 @@ class AskOmar:
                 model=str(request.get("model", "") or "") or None,
                 thinking=str(request.get("thinking", "") or "") or None,
             )
+        if request_type == "set_system_access":
+            return self.set_system_access(str(request.get("mode", "")))
         return {"ok": False, "error": f"Unknown request type: {request_type}"}
 
     def close(self) -> None:

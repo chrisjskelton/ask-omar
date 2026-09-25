@@ -3,7 +3,7 @@
 ## In 0.1
 
 - Omarchy bar entry, compact answer panel and follow-up conversations
-- Recognized-command approval panel, Stop and New
+- Brokered Ask First / Block Commands / Allow All modes, Stop and New
 - Local Scratchpad and recent answers
 - Capture shortcuts and optional Voxtype drafts
 - Provider/model/reasoning settings through Pi

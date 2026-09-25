@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "enabled": true,
   "hardBlocked": [
     { "pattern": "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/[\\s'\"]*(?:$|[;&|])", "reason": "Wipe root filesystem", "description": "delete everything on the system" },
@@ -33,9 +33,5 @@
     { "pattern": "\\bpkill\\s+(-9|-KILL|-SIGKILL)\\b", "reason": "Force kill processes", "description": "force-stop processes" },
     { "pattern": "\\bsystemctl\\s+(stop|disable|mask)\\b", "reason": "Disabling system services", "description": "stop or disable a system service" },
     { "pattern": "\\b(truncate|shred)\\b", "reason": "Destructive file operation", "description": "destroy file contents" }
-  ],
-  "safeExceptions": [
-    "rm\\s+-rf?\\s+\\./?(node_modules|dist|build|\\.next|target|\\.cache|\\.tmp)",
-    "rm\\s+-rf?\\s+/tmp/(?!\\.{1,2}$)[A-Za-z0-9._-]+"
   ]
 }

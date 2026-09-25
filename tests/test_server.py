@@ -109,10 +109,10 @@ class LocalAnswerTests(unittest.TestCase):
     def test_agent_response_includes_tool_recap(self):
         agent = Mock()
         agent.query.return_value = "I moved Firefox to the left."
-        agent.last_tools_used = ["bash"]
+        agent.last_tools_used = ["run_command"]
         self.omar.agent = agent
         result = self.omar.query("put firefox on the left")
-        self.assertEqual(result["recap"], "Ran: bash")
+        self.assertEqual(result["recap"], "Ran: run_command")
 
     def test_agent_prompt_explains_session_history_and_runtime_settings(self):
         self.omar.config = Config(
@@ -156,9 +156,9 @@ class LocalAnswerTests(unittest.TestCase):
 
     def test_tool_recap_with_tools(self):
         agent = Mock()
-        agent.last_tools_used = ["bash", "read"]
+        agent.last_tools_used = ["run_command", "read"]
         self.omar.agent = agent
-        self.assertEqual(self.omar.tool_recap(), "Ran: bash · read")
+        self.assertEqual(self.omar.tool_recap(), "Ran: run_command · read")
 
     def test_history_endpoint_returns_retained_records(self):
         self.omar.state.add_history("Question", "Answer", "assistant")
@@ -278,7 +278,7 @@ class LocalAnswerTests(unittest.TestCase):
             "id": "abc",
             "method": "select",
             "title": "Omar wants to delete a folder\nCommand: rm -r /tmp/x",
-            "options": ["Allow", "Deny"],
+            "options": ["Allow once", "Allow for this question", "Deny"],
         }
         self.omar.agent = agent
         result = self.omar.handle({"type": "activity"})
@@ -290,8 +290,8 @@ class LocalAnswerTests(unittest.TestCase):
         agent = Mock()
         agent.respond_confirmation.return_value = True
         self.omar.agent = agent
-        result = self.omar.handle({"type": "confirm", "id": "abc", "response": "Allow"})
-        agent.respond_confirmation.assert_called_once_with("abc", "Allow")
+        result = self.omar.handle({"type": "confirm", "id": "abc", "response": "Allow once"})
+        agent.respond_confirmation.assert_called_once_with("abc", "Allow once")
         self.assertTrue(result["ok"])
         self.assertEqual(result["kind"], "confirmed")
 
@@ -299,7 +299,7 @@ class LocalAnswerTests(unittest.TestCase):
         agent = Mock()
         agent.respond_confirmation.return_value = False
         self.omar.agent = agent
-        result = self.omar.handle({"type": "confirm", "id": "old", "response": "Allow"})
+        result = self.omar.handle({"type": "confirm", "id": "old", "response": "Allow once"})
         self.assertFalse(result["ok"])
         self.assertEqual(result["error_code"], "stale_confirmation")
 
@@ -508,6 +508,33 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertEqual(result["model"], "gpt-5.6-terra")
         self.assertEqual(result["thinking"], "high")
         self.assertEqual(Config.load(config_path).model, "gpt-5.6-terra")
+
+    def test_set_system_access_writes_config_and_reloads_runtime(self):
+        config_path = Path(self.temp.name) / "config.toml"
+        config_path.write_text(
+            '[agent]\nprovider = "openai-codex"\nmodel = "gpt-5.6-sol"\nsystem_access = "ask"\n',
+            encoding="utf-8",
+        )
+        self.omar.config_path = config_path
+        old_agent = Mock()
+        self.omar.agent = old_agent
+        with patch("ask_omar.server.PiAgent") as agent_cls:
+            agent_cls.return_value = Mock()
+            result = self.omar.set_system_access("full")
+        old_agent.stop.assert_called_once()
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["system_access"], "full")
+        self.assertEqual(Config.load(config_path).system_access, "full")
+        agent_cls.assert_called_once()
+        self.assertEqual(agent_cls.call_args.args[0].system_access, "full")
+
+    def test_set_system_access_rejects_unknown_mode_without_reloading(self):
+        old_agent = Mock()
+        self.omar.agent = old_agent
+        result = self.omar.set_system_access("always")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "invalid_system_access")
+        old_agent.stop.assert_not_called()
 
     def test_seed_agent_defaults_uses_pi_settings_when_unset(self):
         config_path = Path(self.temp.name) / "empty.toml"

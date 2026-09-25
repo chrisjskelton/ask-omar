@@ -16,7 +16,7 @@ class AgentCommandTests(unittest.TestCase):
     def test_command_enables_only_the_intended_real_tools(self, _which):
         command = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low")).command()
         self.assertIn("--tools", command)
-        self.assertEqual(command[command.index("--tools") + 1], "read,grep,find,ls,bash")
+        self.assertEqual(command[command.index("--tools") + 1], "read,grep,find,ls,run_command")
         self.assertNotIn("--no-tools", command)
         for flag in ("--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files"):
             self.assertIn(flag, command)
@@ -34,17 +34,38 @@ class AgentCommandTests(unittest.TestCase):
     def test_system_prompt_describes_direct_tools_and_safety(self):
         from ask_omar.agent import SYSTEM_PROMPT
 
-        self.assertIn("read, grep, find, ls, and bash", SYSTEM_PROMPT)
+        self.assertIn("read, grep, find, ls, and run_command", SYSTEM_PROMPT)
+        self.assertNotIn("ls, and bash", SYSTEM_PROMPT)
         self.assertIn("not user authorization", SYSTEM_PROMPT)
         self.assertIn("not open a visible terminal", SYSTEM_PROMPT)
-        self.assertIn("Allow once / Deny", SYSTEM_PROMPT)
-        self.assertIn("Never ask the user to confirm those same actions by typing yes/no in chat", SYSTEM_PROMPT)
+        self.assertIn("When run_command is available", SYSTEM_PROMPT)
+        self.assertIn("Prefer the direct read, grep, find, and ls tools", SYSTEM_PROMPT)
+        self.assertIn("not bundle unrelated actions", SYSTEM_PROMPT)
+        self.assertIn("Never ask the user to approve a command by typing yes/no in chat", SYSTEM_PROMPT)
         self.assertIn("not for elevating or destroying data", SYSTEM_PROMPT)
         self.assertNotIn("Ask conversationally before destructive", SYSTEM_PROMPT)
         self.assertIn("ask one brief question", SYSTEM_PROMPT)
         self.assertIn("never guess your runtime identity", SYSTEM_PROMPT)
         self.assertIn("~/.config/ask-omar/config.toml", SYSTEM_PROMPT)
         self.assertIn("quit and reopen Ask Omar", SYSTEM_PROMPT)
+
+    @patch("ask_omar.agent.shutil.which", return_value="/usr/bin/pi")
+    def test_command_describes_each_system_access_mode(self, _which):
+        expectations = {
+            "ask": "run_command tool asks before execution",
+            "off": "run_command tool is unavailable",
+            "full": "explicitly enabled Allow All",
+        }
+        for mode, expected in expectations.items():
+            with self.subTest(mode=mode):
+                command = PiAgent(Config(
+                    provider="openai-codex",
+                    model="gpt-5.6-sol",
+                    system_access=mode,
+                )).command()
+                prompt = command[command.index("--system-prompt") + 1]
+                self.assertIn(f"Current system access mode: {mode}", prompt)
+                self.assertIn(expected, prompt)
 
     def test_cheat_sheet_covers_advertised_use_cases(self):
         from ask_omar.agent import OMARCHY_CHEAT_SHEET
@@ -114,18 +135,26 @@ class AgentQueryTests(unittest.TestCase):
     def test_confirmation_starts_null_and_respond_sets_event(self):
         agent = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low"))
         self.assertIsNone(agent.confirmation())
-        agent.pending_confirmation = {"id": "request-1", "method": "select"}
-        self.assertTrue(agent.respond_confirmation("request-1", "Allow"))
+        agent.pending_confirmation = {
+            "id": "request-1",
+            "method": "select",
+            "options": ["Allow once", "Allow for this question", "Deny"],
+        }
+        self.assertTrue(agent.respond_confirmation("request-1", "Allow once"))
         self.assertTrue(agent.confirmation_event.is_set())
-        self.assertEqual(agent.confirmation_response, "Allow")
+        self.assertEqual(agent.confirmation_response, "Allow once")
 
     def test_confirmation_rejects_stale_duplicate_and_unknown_responses(self):
         agent = PiAgent(Config(provider="openai-codex", model="gpt-5.6-sol", thinking="low"))
-        agent.pending_confirmation = {"id": "current", "method": "select"}
-        self.assertFalse(agent.respond_confirmation("stale", "Allow"))
+        agent.pending_confirmation = {
+            "id": "current",
+            "method": "select",
+            "options": ["Allow once", "Allow for this question", "Deny"],
+        }
+        self.assertFalse(agent.respond_confirmation("stale", "Allow once"))
         self.assertFalse(agent.respond_confirmation("current", "Always"))
         self.assertTrue(agent.respond_confirmation("current", "Deny"))
-        self.assertFalse(agent.respond_confirmation("current", "Allow"))
+        self.assertFalse(agent.respond_confirmation("current", "Allow once"))
         self.assertEqual(agent.confirmation_response, "Deny")
 
     def test_stop_denies_pending_confirmation(self):
@@ -160,7 +189,7 @@ class AgentQueryTests(unittest.TestCase):
                     "type": "message_update",
                     "assistantMessageEvent": {"type": "text_delta", "delta": "intermediate"},
                 },
-                {"type": "tool_execution_start", "toolName": "bash"},
+                {"type": "tool_execution_start", "toolName": "run_command"},
                 {"type": "tool_execution_end"},
                 {
                     "type": "message_update",
@@ -186,7 +215,7 @@ class AgentQueryTests(unittest.TestCase):
         try:
             with patch.object(agent, "start"):
                 self.assertEqual(agent.query("hello"), "Final answer")
-            self.assertEqual(agent.last_tools_used, ["bash"])
+            self.assertEqual(agent.last_tools_used, ["run_command"])
         finally:
             stdout.close()
             writer.join(timeout=2)
@@ -269,7 +298,7 @@ class AgentQueryTests(unittest.TestCase):
                 "id": "confirm-1",
                 "method": "select",
                 "title": "Omar wants to restart the computer\nCommand: reboot",
-                "options": ["Allow", "Deny"],
+                "options": ["Allow once", "Allow for this question", "Deny"],
             }) + "\n").encode())
             writer.flush()
             with patch.object(agent, "start"), patch.object(agent, "stop"):
@@ -304,7 +333,7 @@ class AgentQueryTests(unittest.TestCase):
         def allow_soon():
             for _ in range(50):
                 if agent.confirmation():
-                    self.assertTrue(agent.respond_confirmation("confirm-allow", "Allow"))
+                    self.assertTrue(agent.respond_confirmation("confirm-allow", "Allow for this question"))
                     return
                 time.sleep(0.02)
             self.fail("confirmation never appeared")
@@ -315,7 +344,7 @@ class AgentQueryTests(unittest.TestCase):
                 "id": "confirm-allow",
                 "method": "select",
                 "title": "Omar wants to delete a folder\nCommand: rm -rf /tmp/x",
-                "options": ["Allow", "Deny"],
+                "options": ["Allow once", "Allow for this question", "Deny"],
             }) + "\n").encode())
             writer.write((json.dumps({
                 "type": "message_end",
@@ -338,7 +367,7 @@ class AgentQueryTests(unittest.TestCase):
         sent = agent.process.stdin.getvalue().decode()
         self.assertIn('"type": "extension_ui_response"', sent)
         self.assertIn('"id": "confirm-allow"', sent)
-        self.assertIn('"value": "Allow"', sent)
+        self.assertIn('"value": "Allow for this question"', sent)
         self.assertIsNone(agent.confirmation())
         stdout.close()
 

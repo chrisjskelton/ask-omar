@@ -20,6 +20,16 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.conversation_idle_minutes, 45)
             self.assertEqual(config.history_limit, 250)
 
+    def test_system_access_defaults_to_ask_and_validates_modes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            self.assertEqual(Config.load(path).system_access, "ask")
+            path.write_text('[agent]\nsystem_access = "full"\n', encoding="utf-8")
+            self.assertEqual(Config.load(path).system_access, "full")
+            path.write_text('[agent]\nsystem_access = "unsafe"\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "system_access must be one of"):
+                Config.load(path)
+
     def test_zero_disables_idle_expiry(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "config.toml"
@@ -111,6 +121,17 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(config.thinking, "high")
             self.assertEqual(config.history_limit, 40)
 
+    def test_update_system_access_preserves_other_agent_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "config.toml"
+            path.write_text('[agent]\nprovider = "example"\nmodel = "model"\n', encoding="utf-8")
+            update_agent_settings(path, system_access="off")
+            config = Config.load(path)
+            self.assertEqual(config.system_access, "off")
+            self.assertEqual(config.provider, "example")
+            with self.assertRaisesRegex(ValueError, "System access must be one of"):
+                update_agent_settings(path, system_access="unsafe")
+
     def test_update_agent_settings_rejects_unknown_thinking(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "config.toml"
@@ -123,6 +144,7 @@ class ConfigTests(unittest.TestCase):
         text = example.read_text(encoding="utf-8")
         self.assertIn('provider = ""', text)
         self.assertIn('model = ""', text)
+        self.assertIn('system_access = "ask"', text)
         self.assertNotIn("gpt-5.6-sol", text)
 
     def test_read_pi_default_identity(self):

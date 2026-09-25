@@ -8,6 +8,10 @@ backend = "pi"
 provider = ""
 model = ""
 thinking = "low"
+# ask: show each command, with an optional grant for this question (default)
+# off: do not offer model-generated command execution
+# full: run model-generated commands without approval; use only when you accept the risk
+system_access = "ask"
 timeout_seconds = 90
 
 [conversation]

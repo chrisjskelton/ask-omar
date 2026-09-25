@@ -1,9 +1,11 @@
 /**
- * Ask Omar Guard — dangerous command confirmation for headless Pi.
+ * Ask Omar command broker for headless Pi.
  *
- * Intercepts bash tool calls, checks against configurable patterns, and
- * prompts the RPC client (Ask Omar) to confirm before dangerous commands
- * run. Truly catastrophic commands are hard-blocked with no override.
+ * Pi's built-in bash tool is disabled by the launcher. This extension exposes
+ * the only model-controlled shell path, enforces the internal off / ask / full
+ * modes, and bounds command runtime and output. Ask First shows exact commands,
+ * supports a short grant for the current request, and hard-blocks catastrophic
+ * patterns. Mandatory hard blocks remain active in Allow All.
  *
  * Config: ~/.config/ask-omar/guard.json (auto-created with defaults on
  * first load if missing). Edit and save to fine-tune patterns at runtime.
@@ -12,8 +14,10 @@
  */
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 interface PatternRule {
@@ -27,10 +31,9 @@ interface GuardConfig {
   enabled: boolean;
   hardBlocked: PatternRule[];
   confirmRequired: PatternRule[];
-  safeExceptions: string[];
 }
 
-const GUARD_CONFIG_VERSION = 3;
+const GUARD_CONFIG_VERSION = 4;
 const LEGACY_POWER_PATTERN = "\\b(shutdown|reboot|halt|poweroff)\\b";
 const LEGACY_ROOT_WIPE_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/\\s*$";
 const ROOT_WIPE_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/[\\s'\"]*(?:$|[;&|])";
@@ -38,15 +41,17 @@ const ROOT_WIPE_GLOB_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/\\
 const ROOT_WIPE_DOT_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+/\\.(?:\\s|$|[;&|'\"])";
 const ROOT_WIPE_SLASHSLASH_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*\\s+//";
 const ROOT_WIPE_QUOTED_PATTERN = "\\brm\\s+(-[a-z]*r[a-z]*f?|--recursive).*['\"]\\/['\"]";
-const LEGACY_SAFE_BUILD_PATTERN = "rm\\s+-rf?\\s+\\./?(node_modules|dist|build|\\.next|target|\\.cache|\\.tmp)\\b";
-const SAFE_BUILD_PATTERN = "rm\\s+-rf?\\s+\\./?(node_modules|dist|build|\\.next|target|\\.cache|\\.tmp)";
-const LEGACY_SAFE_TMP_PATTERN = "rm\\s+-rf?\\s+/tmp/";
-const SAFE_TMP_PATTERN = "rm\\s+-rf?\\s+/tmp/(?!\\.{1,2}$)[A-Za-z0-9._-]+";
 
 const GUARD_TAMPER_RULE: PatternRule = {
   pattern: "",
   reason: "Ask Omar guard tampering",
   description: "disable or replace Ask Omar's command guard",
+};
+
+const SHELL_COMMAND_RULE: PatternRule = {
+  pattern: "",
+  reason: "Shell command",
+  description: "run this shell command",
 };
 
 const DEFAULT_CONFIG: GuardConfig = {
@@ -93,10 +98,6 @@ const DEFAULT_CONFIG: GuardConfig = {
     { pattern: "\\bsystemctl\\s+(stop|disable|mask)\\b", reason: "Disabling system services", description: "stop or disable a system service" },
     { pattern: "\\b(truncate|shred)\\b", reason: "Destructive file operation", description: "destroy file contents" },
   ],
-  safeExceptions: [
-    SAFE_BUILD_PATTERN,
-    SAFE_TMP_PATTERN,
-  ],
 };
 
 function configPath(): string {
@@ -105,7 +106,7 @@ function configPath(): string {
 }
 
 function looksLikeGuardTampering(command: string): boolean {
-  const target = /(?:^|[\s"'`/=])((?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?(?:\.config\/ask-omar\/)?guard\.json|ask-omar-guard\.ts)\b/i;
+  const target = /(?:^|[\s"'`/=])((?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?(?:\.config\/ask-omar\/)?guard\.json|(?:~|\$HOME|\$\{HOME\}|\/[^;\s]*)?\.config\/ask-omar\/config\.toml|ask-omar-guard\.ts)\b/i;
   if (!target.test(command)) return false;
   // Reading the guard is fine; rewriting, replacing, or deleting it is not.
   return /(?:>>?|tee\b|\bcp\b|\bmv\b|\binstall\b|\bdd\b|\btruncate\b|\bsed\b[^\n]*\s-i|\bperl\b[^\n]*\s-i|\brm\b|\bchmod\b|\bchown\b|\bcat\b\s*>)/i.test(
@@ -128,25 +129,24 @@ function loadConfig(): GuardConfig {
   try {
     const raw = readFileSync(path, "utf-8");
     const user = JSON.parse(raw);
+    const configuredHardBlocks = Array.isArray(user.hardBlocked) ? user.hardBlocked : [];
+    const mandatoryHardBlocks = DEFAULT_CONFIG.hardBlocked.filter(
+      (required) => !configuredHardBlocks.some((entry) => entry?.pattern === required.pattern),
+    );
     const config: GuardConfig = {
       version: user.version ?? 1,
       // enabled:false is ignored — an agent must not be able to disable the brake
       // by rewriting this file. Users who need an escape hatch use a real terminal.
       enabled: true,
-      hardBlocked: Array.isArray(user.hardBlocked) && user.hardBlocked.length > 0
-        ? user.hardBlocked
-        : DEFAULT_CONFIG.hardBlocked,
+      // User rules can extend, but never replace, the mandatory safety floor.
+      hardBlocked: [...mandatoryHardBlocks, ...configuredHardBlocks],
       confirmRequired: Array.isArray(user.confirmRequired) && user.confirmRequired.length > 0
         ? user.confirmRequired
         : DEFAULT_CONFIG.confirmRequired,
-      safeExceptions: Array.isArray(user.safeExceptions)
-        ? user.safeExceptions
-        : DEFAULT_CONFIG.safeExceptions,
     };
 
-    // Version 1 shipped broader safe exceptions and made power commands
-    // unconditional hard blocks. Migrate exact built-ins only so custom rules
-    // stay intact.
+    // Version 1 made power commands unconditional hard blocks. Migrate exact
+    // built-ins only so custom rules stay intact.
     if ((config.version ?? 1) < 2) {
       const hadLegacyPowerRule = config.hardBlocked.some((rule) => rule.pattern === LEGACY_POWER_PATTERN);
       config.hardBlocked = config.hardBlocked
@@ -155,15 +155,12 @@ function loadConfig(): GuardConfig {
       if (hadLegacyPowerRule && !config.confirmRequired.some((rule) => rule.pattern === LEGACY_POWER_PATTERN)) {
         config.confirmRequired = [DEFAULT_CONFIG.confirmRequired[0], ...config.confirmRequired];
       }
-      config.safeExceptions = config.safeExceptions.map((pattern) => {
-        if (pattern === LEGACY_SAFE_BUILD_PATTERN) return SAFE_BUILD_PATTERN;
-        if (pattern === LEGACY_SAFE_TMP_PATTERN) return SAFE_TMP_PATTERN;
-        return pattern;
-      });
       config.version = 2;
     }
 
-    // Version 3 expands root-wipe / remote-pipe hard blocks and privilege confirms.
+    // Versions 3 and 4 expand hard blocks and risk-specific descriptions.
+    // Version 4 also drops safe exceptions: every non-blocked shell command
+    // now requires explicit approval, regardless of the local config version.
     if ((config.version ?? 1) < GUARD_CONFIG_VERSION) {
       const ensureHard = (pattern: string, rule: PatternRule) => {
         if (!config.hardBlocked.some((entry) => entry.pattern === pattern)) {
@@ -196,7 +193,6 @@ function loadConfig(): GuardConfig {
 }
 
 type GuardDecision =
-  | { kind: "allow" }
   | { kind: "hard-block"; rule: PatternRule }
   | { kind: "confirm"; rule: PatternRule };
 
@@ -215,16 +211,8 @@ export function evaluateCommand(command: string, config: GuardConfig): GuardDeci
     }
   }
 
-  // Safe exceptions must match the entire command. A safe prefix must never
-  // mask a dangerous second command joined with ;, &&, ||, or a pipe.
-  for (const pattern of config.safeExceptions) {
-    try {
-      if (new RegExp(`^(?:${pattern})\\s*$`, "i").test(command.trim())) return { kind: "allow" };
-    } catch {
-      // Invalid regex in config — skip it.
-    }
-  }
-
+  // Preserve specific descriptions for recognized risks, but confirmation is
+  // no longer conditional on matching one of these finite patterns.
   for (const rule of config.confirmRequired) {
     try {
       if (new RegExp(rule.pattern, "i").test(command)) return { kind: "confirm", rule };
@@ -233,53 +221,186 @@ export function evaluateCommand(command: string, config: GuardConfig): GuardDeci
     }
   }
 
-  return { kind: "allow" };
+  return { kind: "confirm", rule: SHELL_COMMAND_RULE };
+}
+
+type AccessMode = "ask" | "off" | "full";
+
+interface CommandResult {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  aborted: boolean;
+  timedOut: boolean;
+  outputLimited: boolean;
+}
+
+const COMMAND_TIMEOUT_MS = 60_000;
+const QUESTION_GRANT_MS = 15 * 60_000;
+const OUTPUT_LIMIT_BYTES = 64 * 1024;
+const COMMAND_LIMIT_BYTES = 32 * 1024;
+
+function accessMode(): AccessMode {
+  const value = String(process.env.ASK_OMAR_SYSTEM_ACCESS || "ask").toLowerCase();
+  return value === "off" || value === "full" ? value : "ask";
+}
+
+function stopProcess(pid: number | undefined, signal: NodeJS.Signals): void {
+  if (!pid) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    // The process may already have exited.
+  }
+}
+
+function executeShell(command: string, cwd: string, signal?: AbortSignal): Promise<CommandResult> {
+  if (signal?.aborted) throw new Error("Command cancelled before it started.");
+
+  return new Promise((resolve, reject) => {
+    const child = spawn("/bin/bash", ["-lc", command], {
+      cwd,
+      env: process.env,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let capturedBytes = 0;
+    let aborted = false;
+    let timedOut = false;
+    let outputLimited = false;
+    let killTimer: NodeJS.Timeout | undefined;
+
+    const terminate = () => {
+      stopProcess(child.pid, "SIGTERM");
+      killTimer ??= setTimeout(() => stopProcess(child.pid, "SIGKILL"), 1000);
+      killTimer.unref();
+    };
+    const append = (target: Buffer[], chunk: Buffer) => {
+      const remaining = OUTPUT_LIMIT_BYTES - capturedBytes;
+      if (remaining > 0) target.push(chunk.subarray(0, remaining));
+      capturedBytes += chunk.length;
+      if (capturedBytes > OUTPUT_LIMIT_BYTES && !outputLimited) {
+        outputLimited = true;
+        terminate();
+      }
+    };
+    const abort = () => {
+      aborted = true;
+      terminate();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    child.stdout.on("data", (chunk: Buffer) => append(stdout, chunk));
+    child.stderr.on("data", (chunk: Buffer) => append(stderr, chunk));
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      terminate();
+    }, COMMAND_TIMEOUT_MS);
+    timeout.unref();
+
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      signal?.removeEventListener("abort", abort);
+      reject(error);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      signal?.removeEventListener("abort", abort);
+      resolve({
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        code,
+        aborted,
+        timedOut,
+        outputLimited,
+      });
+    });
+  });
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.on("tool_call", async (event, ctx) => {
-    if (event.toolName !== "bash") return undefined;
+  const mode = accessMode();
+  let questionGrantUntil = 0;
+  const revokeQuestionGrant = () => {
+    questionGrantUntil = 0;
+  };
 
-    // Always enforce. enabled:false in guard.json is ignored on load.
-    const config = loadConfig();
-    const command = String(event.input?.command ?? "");
-    const decision = evaluateCommand(command, config);
+  pi.on("session_start", () => {
+    revokeQuestionGrant();
+    const active = pi.getActiveTools().filter((name) => name !== "bash");
+    if (mode !== "off" && !active.includes("run_command")) active.push("run_command");
+    pi.setActiveTools(active);
+  });
+  pi.on("agent_start", revokeQuestionGrant);
+  pi.on("agent_settled", revokeQuestionGrant);
+  pi.on("session_shutdown", revokeQuestionGrant);
 
-    if (decision.kind === "hard-block") {
+  if (mode === "off") return;
+
+  pi.registerTool({
+    name: "run_command",
+    label: "Run command",
+    description: "Run one focused shell command on this computer through Ask Omar's access controls.",
+    parameters: Type.Object({
+      command: Type.String({ description: "The complete shell command to run" }),
+    }, { additionalProperties: false }),
+    executionMode: "sequential",
+
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const command = String(params.command ?? "").trim();
+      if (!command) throw new Error("Ask Omar refused an empty command.");
+      if (Buffer.byteLength(command, "utf8") > COMMAND_LIMIT_BYTES) {
+        throw new Error("Ask Omar refused a command longer than 32 KiB.");
+      }
+
+      const decision = evaluateCommand(command, loadConfig());
+      if (decision.kind === "hard-block") {
+        throw new Error(
+          `Ask Omar blocked this command because it could ${decision.rule.description}. `
+          + "If you still need to do this, open a terminal and run it yourself.",
+        );
+      }
+
+      if (mode === "ask") {
+        if (Date.now() >= questionGrantUntil) {
+          if (!ctx.hasUI) {
+            throw new Error(
+              "Ask Omar blocked this command because approval is required and the approval panel is unavailable.",
+            );
+          }
+          const title = `Omar wants to ${decision.rule.description}\nCommand: ${command}`;
+          const choice = await ctx.ui.select(
+            title,
+            ["Allow once", "Allow for this question", "Deny"],
+          );
+          if (choice === "Allow for this question") {
+            questionGrantUntil = Date.now() + QUESTION_GRANT_MS;
+          } else if (choice !== "Allow once") {
+            throw new Error(
+              `Command denied (${decision.rule.reason}). Do not ask for the same permission in chat.`,
+            );
+          }
+        }
+      }
+
+      const result = await executeShell(command, ctx.cwd, signal);
+      if (result.aborted) throw new Error("Command cancelled.");
+      if (result.timedOut) throw new Error("Command stopped after 60 seconds.");
+      if (result.outputLimited) throw new Error("Command stopped after producing 64 KiB of output.");
+
+      const parts = [];
+      if (result.stdout) parts.push(result.stdout.trimEnd());
+      if (result.stderr) parts.push(`stderr:\n${result.stderr.trimEnd()}`);
+      if (result.code !== 0) parts.push(`exit code: ${result.code ?? "unknown"}`);
+      if (parts.length === 0) parts.push("Command completed with no output.");
       return {
-        block: true,
-        reason: `Ask Omar blocked this command because it could ${decision.rule.description}. If you still need to do this, open a terminal and run it yourself.`,
+        content: [{ type: "text", text: parts.join("\n") }],
+        details: { exitCode: result.code },
       };
-    }
-
-    if (decision.kind === "confirm") {
-      const rule = decision.rule;
-
-      if (!ctx.hasUI) {
-        return {
-          block: true,
-          reason: `Ask Omar blocked this command because it could ${rule.description}, and there is no confirmation panel available. If you still need to do this, open a terminal and run it yourself.`,
-        };
-      }
-
-      const title = `Omar wants to ${rule.description}\nCommand: ${command}`;
-      const choice = await ctx.ui.select(title, ["Allow", "Deny"]);
-
-      if (choice !== "Allow") {
-        ctx.ui.notify(`Command denied: ${rule.reason}`, "warning");
-        return {
-          block: true,
-          reason:
-            `Denied by user via Allow once / Deny (${rule.reason}). ` +
-            "Do not ask them to confirm this same command in chat. " +
-            "Wait for a new explicit request if they want to try again.",
-        };
-      }
-
-      ctx.ui.notify(`Command allowed: ${rule.reason}`, "info");
-      return undefined;
-    }
-
-    return undefined;
+    },
   });
 }

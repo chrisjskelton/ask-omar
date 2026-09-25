@@ -21,9 +21,9 @@ omarchy, and normal desktop commands. Verify the result where practical and say
 what actually happened.
 
 Ask Omar can run fixed local actions when you ask for them by name, but that
-list is not your capability limit. Use read, grep, find, ls, and bash when they
-are the right tools. Do not open a visible terminal unless the user explicitly
-asks for one.
+list is not your capability limit. Use read, grep, find, ls, and run_command when
+they are available and are the right tools. Do not open a visible terminal unless
+the user explicitly asks for one.
 
 Use live desktop information when the user's request calls for it. Follow normal
 conversational references when earlier messages make them clear. If neither the
@@ -37,11 +37,12 @@ edit only the requested values under [agent] in ~/.config/ask-omar/config.toml.
 Explain that they must quit and reopen Ask Omar before the new values take effect;
 do not restart the service during the answer.
 
-Hard gates vs chat questions:
-- Dangerous, privileged, or irreversible bash (sudo, recursive delete, force-delete,
-  power control, and similar) is approved only through Ask Omar's Allow once / Deny
-  buttons. Never ask the user to confirm those same actions by typing yes/no in chat,
-  and never treat a chat reply as a substitute for that panel.
+Computer access:
+- Prefer the direct read, grep, find, and ls tools. When run_command is available,
+  use it only when a shell command is necessary and keep each command focused; do
+  not bundle unrelated actions. Ask Omar enforces the configured access mode outside
+  this prompt. Never ask the user to approve a command by typing yes/no in chat, and
+  never treat a chat reply as a substitute for the approval panel.
 - If a command was Denied or timed out in that panel, say so briefly and stop. Do not
   re-ask for permission in chat for the same command. Wait for a new explicit request.
 - Use a short chat question only for preference or identity (which app, which file,
@@ -97,7 +98,7 @@ class AgentCancelled(AgentError):
 
 
 class PiAgent:
-    confirmation_timeout_seconds = 300
+    confirmation_timeout_seconds = 90
     max_rpc_event_bytes = 4 * 1024 * 1024
     max_log_bytes = 1024 * 1024
 
@@ -134,7 +135,7 @@ class PiAgent:
             pi,
             "--mode", "rpc",
             "--no-session",
-            "--tools", "read,grep,find,ls,bash",
+            "--tools", "read,grep,find,ls,run_command",
             "--no-extensions",
             "--extension", str(guard_extension),
             "--no-skills",
@@ -144,7 +145,17 @@ class PiAgent:
             "--provider", self.config.provider,
             "--model", self.config.model,
             "--thinking", self.config.thinking,
-            "--system-prompt", SYSTEM_PROMPT,
+            "--system-prompt", (
+                SYSTEM_PROMPT
+                + f"\nCurrent system access mode: {self.config.system_access}. "
+                + (
+                    "The run_command tool asks before execution.\n"
+                    if self.config.system_access == "ask"
+                    else "The run_command tool is unavailable.\n"
+                    if self.config.system_access == "off"
+                    else "The user explicitly enabled Allow All; run_command does not ask.\n"
+                )
+            ),
             "--name", "Ask Omar",
         ]
 
@@ -165,13 +176,15 @@ class PiAgent:
                 pass
             self.log_handle = log_path.open("ab")
             os.chmod(log_path, 0o600)
+            environment = os.environ.copy()
+            environment["ASK_OMAR_SYSTEM_ACCESS"] = self.config.system_access
             self.process = subprocess.Popen(
                 self.command(),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=self.log_handle,
                 bufsize=0,
-                env=os.environ.copy(),
+                env=environment,
                 start_new_session=True,
             )
             self.buffer = b""
@@ -299,14 +312,15 @@ class PiAgent:
 
     def respond_confirmation(self, request_id: str, response: str) -> bool:
         """Deliver one response only to the matching pending request."""
-        if response not in ("Allow", "Deny"):
-            return False
         with self.confirmation_lock:
             if (
                 not self.pending_confirmation
                 or self.pending_confirmation.get("id") != request_id
                 or self.confirmation_response is not None
             ):
+                return False
+            options = self.pending_confirmation.get("options", [])
+            if not isinstance(options, list) or response not in options:
                 return False
             self.confirmation_response = response
             self.confirmation_event.set()
@@ -378,7 +392,7 @@ class PiAgent:
                             "Checking files…"
                             if tool_name in {"read", "grep", "find", "ls"}
                             else "Working with a command…"
-                            if tool_name == "bash"
+                            if tool_name == "run_command"
                             else "Working…"
                         )
                         self._set_activity(status)
@@ -423,7 +437,7 @@ class PiAgent:
                         if response is None:
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "cancelled": True})
                             raise AgentError(
-                                "Command approval timed out. Use Allow once / Deny next time — "
+                                "Command approval timed out. Use Allow once, Allow for this question, or Deny next time — "
                                 "Omar will not ask for the same approval in chat.",
                                 "confirmation_timeout",
                             )

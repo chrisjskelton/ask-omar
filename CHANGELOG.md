@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 — Brokered system access
+
+- Pi's unrestricted Bash tool is replaced by an Ask Omar-owned command broker.
+- Ask First shows the exact command with Allow once, Allow for this question, and Deny.
+- Question grants expire after 15 minutes and are revoked when the request finishes or stops.
+- Block Commands disables the shell command tool; explicitly enabled Allow All runs commands without asking.
+- Direct read-only Pi tools remain automatic to keep routine inspection quick.
+- Mandatory catastrophic hard blocks remain active in every mode; Ask First also shows recognised-risk warnings.
+- Commands are bounded to 60 seconds, 32 KiB of command text, and 64 KiB of captured output.
+- The assistant prompt prefers direct read-only tools and focused shell commands instead of bundled command chains.
+
 ## 0.1.0 — First experimental release
 
 - Omarchy bar assistant powered by an existing Pi installation and provider connection.
