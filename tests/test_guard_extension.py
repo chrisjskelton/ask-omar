@@ -118,6 +118,7 @@ class GuardExtensionTests(unittest.TestCase):
             "rm -rf /tmp/example": "Recursive forced deletion",
             "rm -r -f ./build": "Recursive forced deletion",
             "rm -\\\nrf /tmp/example": "Recursive forced deletion",
+            "false \\\\\nrm -rf /tmp/example": "Recursive forced deletion",
             "r'm' -r'f' /tmp/example": "Recursive forced deletion",
             "mkfs.ext4 /dev/sda": "Disk or filesystem erasure",
             "dd if=image.iso of=/dev/sdb": "Raw device write",
@@ -198,7 +199,12 @@ class GuardExtensionTests(unittest.TestCase):
             self.assertIn("Command denied", result["error"])
 
     def test_high_risk_command_prompts_in_allow_all(self):
-        commands = ["sudo true", "rm -\\\nrf /tmp/example", 'dd if=x of="/dev/sdb"']
+        commands = [
+            "sudo true",
+            "rm -\\\nrf /tmp/example",
+            "false \\\\\nrm -rf /tmp/example",
+            'dd if=x of="/dev/sdb"',
+        ]
         payload = run_broker(commands, mode="full", choices=["Deny"] * len(commands))
         self.assertEqual(len(payload["prompts"]), len(commands))
         for prompt, result in zip(payload["prompts"], payload["results"]):

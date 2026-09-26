@@ -75,7 +75,12 @@ function normalizeForRiskCheck(command: string): string {
 
 export function evaluateCommand(command: string): RiskRule | null {
   const normalized = normalizeForRiskCheck(command);
-  const variants = [normalized, normalized.replace(/["']/g, "")];
+  const variants = [
+    command,
+    normalized,
+    command.replace(/["']/g, ""),
+    normalized.replace(/["']/g, ""),
+  ];
   return RISK_RULES.find((rule) => variants.some((value) => rule.pattern.test(value))) ?? null;
 }
 
