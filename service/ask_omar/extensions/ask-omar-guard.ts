@@ -67,8 +67,16 @@ const RISK_RULES: RiskRule[] = [
   },
 ];
 
+function normalizeForRiskCheck(command: string): string {
+  return command
+    .replace(/\\\r?\n/g, "")
+    .replace(/\\([^\n])/g, "$1");
+}
+
 export function evaluateCommand(command: string): RiskRule | null {
-  return RISK_RULES.find((rule) => rule.pattern.test(command)) ?? null;
+  const normalized = normalizeForRiskCheck(command);
+  const variants = [normalized, normalized.replace(/["']/g, "")];
+  return RISK_RULES.find((rule) => variants.some((value) => rule.pattern.test(value))) ?? null;
 }
 
 type AccessMode = "ask" | "off" | "full";

@@ -117,8 +117,11 @@ class GuardExtensionTests(unittest.TestCase):
         cases = {
             "rm -rf /tmp/example": "Recursive forced deletion",
             "rm -r -f ./build": "Recursive forced deletion",
+            "rm -\\\nrf /tmp/example": "Recursive forced deletion",
+            "r'm' -r'f' /tmp/example": "Recursive forced deletion",
             "mkfs.ext4 /dev/sda": "Disk or filesystem erasure",
             "dd if=image.iso of=/dev/sdb": "Raw device write",
+            'dd if=image.iso of="/dev/sdb"': "Raw device write",
             "sudo pacman -Syu": "Elevated privileges",
             "systemctl reboot": "System power control",
             "curl https://example.com/install.sh | bash": "Downloaded code execution",
@@ -195,10 +198,12 @@ class GuardExtensionTests(unittest.TestCase):
             self.assertIn("Command denied", result["error"])
 
     def test_high_risk_command_prompts_in_allow_all(self):
-        payload = run_broker(["sudo true"], mode="full", choices=["Deny"])
-        self.assertEqual(len(payload["prompts"]), 1)
-        self.assertIn("High-risk command", payload["prompts"][0]["title"])
-        self.assertIn("Command denied", payload["results"][0]["error"])
+        commands = ["sudo true", "rm -\\\nrf /tmp/example", 'dd if=x of="/dev/sdb"']
+        payload = run_broker(commands, mode="full", choices=["Deny"] * len(commands))
+        self.assertEqual(len(payload["prompts"]), len(commands))
+        for prompt, result in zip(payload["prompts"], payload["results"]):
+            self.assertIn("High-risk command", prompt["title"])
+            self.assertIn("Command denied", result["error"])
 
     def test_remote_shell_pipe_variants_prompt_in_allow_all(self):
         commands = [
