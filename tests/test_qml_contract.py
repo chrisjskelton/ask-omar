@@ -220,6 +220,8 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn('startScreenshot("fullscreen")', QML)
         self.assertIn('startScreenshot("delayed")', QML)
         self.assertIn("omarchy-capture-region smart --keep-freeze", CAPTURE_HELPER)
+        self.assertIn("-u normal -t 1500", CAPTURE_HELPER)
+        self.assertIn('[[ ! $notification_id =~ ^[0-9]+$ ]]', CAPTURE_HELPER)
         self.assertLess(CAPTURE_HELPER.index('kill "$freeze_pid"'),
                         CAPTURE_HELPER.index("for remaining in 5 4 3 2 1"))
         self.assertLess(CAPTURE_HELPER.index("for remaining in 5 4 3 2 1"),
@@ -278,8 +280,17 @@ class QmlInteractionContractTests(unittest.TestCase):
     def test_settings_exposes_model_and_reasoning_controls(self):
         self.assertIn('text: "AI connection"', QML)
         self.assertIn('text: "Safety"', QML)
-        self.assertIn("There is no sandbox", QML)
-        self.assertIn("cannot recognise every dangerous command", QML)
+        self.assertIn("Ask First is recommended", QML)
+        self.assertIn("Omar cannot run shell commands.", QML)
+        self.assertIn("Routine commands run without asking. High-risk commands still need approval.", QML)
+        self.assertIn('root.selectSystemAccess("ask")', QML)
+        self.assertIn('root.selectSystemAccess("off")', QML)
+        self.assertIn('root.selectSystemAccess("full")', QML)
+        self.assertIn("Confirm Allow All", QML)
+        self.assertIn("Block Commands", QML)
+        self.assertIn("Run routine shell commands without asking", QML)
+        self.assertIn("High-risk commands still need approval in every mode.", QML)
+        self.assertIn('fullAccessPending = false\n    accessSaveMessage = ""', QML)
         self.assertIn('"Change model or reasoning…"', QML)
         self.assertIn('ask-omar", "models"', QML)
         self.assertIn('ask-omar", "set-agent"', QML)
@@ -287,6 +298,10 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("function selectThinking(level)", QML)
         self.assertIn('setting("safetyNoticeSeen", false)', QML)
         self.assertIn('updateSetting("safetyNoticeSeen", true)', QML)
+        self.assertIn("Omar can run commands on this computer", QML)
+        self.assertIn("Ask First is recommended", QML)
+        self.assertIn("Approve one command, or allow commands for the next 15 minutes.", QML)
+        self.assertIn("Want fewer prompts? Choose a different mode in Settings → Safety.", QML)
 
     def test_dictation_availability_detection(self):
         self.assertIn("voxtypeAvailable", QML)
@@ -311,10 +326,14 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("pendingConfirmation", QML)
         self.assertIn("function respondToConfirmation(response)", QML)
         self.assertIn('confirmProcess.command = ["ask-omar", "confirm", requestId, response]', QML)
-        self.assertIn("Allow this command?", QML)
+        self.assertIn("Review shell command", QML)
         self.assertIn('"Allow the command once"', QML)
         self.assertIn('"Deny the command"', QML)
-        self.assertIn('text: "On this computer · Allow once"', QML)
+        self.assertIn("Allow for 15 minutes covers routine commands in your next requests", QML)
+        self.assertIn('root.respondToConfirmation("Allow once")', QML)
+        self.assertIn('root.respondToConfirmation("Allow for 15 minutes")', QML)
+        confirmation_block = QML[QML.index("Review shell command"):QML.index("// Slow hint is folded")]
+        self.assertIn("wrapMode: Text.WordWrap", confirmation_block)
         self.assertNotIn("opacity: 0.12", QML)
 
     def test_activity_is_discreet_and_inline(self):
@@ -393,21 +412,10 @@ class QmlInteractionContractTests(unittest.TestCase):
         back = QML[QML.index("  function backToChat() {"):QML.index("  function backToSettings() {")]
         self.assertIn("if (busy) loadActivity()", back)
 
-    def test_guard_config_is_installable(self):
-        from pathlib import Path
-        guard_example = Path(__file__).parents[1] / "config" / "guard.example.json"
-        self.assertTrue(guard_example.exists())
-        import json
-        config = json.loads(guard_example.read_text())
-        self.assertIn("hardBlocked", config)
-        self.assertIn("confirmRequired", config)
-        self.assertIn("safeExceptions", config)
-        self.assertTrue(len(config["confirmRequired"]) > 0)
-
-    def test_hard_block_explains_terminal_fallback(self):
+    def test_high_risk_commands_fail_closed_without_approval_ui(self):
         guard = (Path(__file__).parents[1] / "service" / "ask_omar" / "extensions" / "ask-omar-guard.ts").read_text()
-        self.assertIn("open a terminal and run it yourself", guard)
-        self.assertIn("no confirmation panel available", guard)
+        self.assertIn("High-risk command", guard)
+        self.assertIn("approval panel is unavailable", guard)
 
     def test_scratchpad_has_a_bar_entry_and_autosaves(self):
         self.assertIn('id: barScratchpad', QML)

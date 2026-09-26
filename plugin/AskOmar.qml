@@ -96,6 +96,7 @@ BarWidget {
   property string healthProvider: ""
   property string healthModel: ""
   property string healthThinking: ""
+  property string healthSystemAccess: "ask"
   property bool healthChecked: false
   property bool backendInstalled: true
   property string recapText: ""
@@ -126,6 +127,9 @@ BarWidget {
   property bool modelsLoading: false
   property bool agentSaving: false
   property string agentSaveMessage: ""
+  property bool accessSaving: false
+  property bool fullAccessPending: false
+  property string accessSaveMessage: ""
   property bool restarting: false
   property bool quitting: false
   property bool quitRequested: false
@@ -574,6 +578,8 @@ BarWidget {
 
   function toggleSettings() {
     settingsExpanded = !settingsExpanded
+    fullAccessPending = false
+    accessSaveMessage = ""
     panelView = "chat"
     historyPreview = null
     historyItemResponse = ""
@@ -625,6 +631,8 @@ BarWidget {
     replyExpanded = false
     screenshotMenuExpanded = false
     aiSettingsHelpExpanded = false
+    fullAccessPending = false
+    accessSaveMessage = ""
     hideFromBarPending = false
   }
 
@@ -1277,6 +1285,35 @@ BarWidget {
     }
   }
 
+  function selectSystemAccess(mode) {
+    if (accessSaving || setAccessProcess.running) return
+    if (mode === "full" && !fullAccessPending) {
+      fullAccessPending = true
+      accessSaveMessage = "Allow All runs routine shell commands without asking. High-risk commands still need approval. Click again to enable it."
+      return
+    }
+    fullAccessPending = false
+    accessSaving = true
+    accessSaveMessage = "Saving…"
+    setAccessProcess.command = ["ask-omar", "set-access", mode]
+    setAccessProcess.running = true
+  }
+
+  function handleSetAccess(raw) {
+    accessSaving = false
+    try {
+      var result = JSON.parse(String(raw || "").trim())
+      if (!result.ok) {
+        accessSaveMessage = String(result.error || "Could not save system access.")
+        return
+      }
+      healthSystemAccess = String(result.system_access || "ask")
+      accessSaveMessage = String(result.message || "System access updated.")
+    } catch (error) {
+      accessSaveMessage = "Could not read the system access response."
+    }
+  }
+
   function handleHealth(raw) {
     healthChecked = true
     try {
@@ -1292,6 +1329,7 @@ BarWidget {
       healthProvider = String(result.provider || "")
       healthModel = String(result.model || "")
       healthThinking = String(result.thinking || "")
+      healthSystemAccess = String(result.system_access || "ask")
     } catch (error) {
       healthStatus = "error"
       healthMessage = "Ask Omar couldn't read the AI connection check."
@@ -1902,6 +1940,15 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.handleSetAgent(text)
+    }
+    stderr: StdioCollector { waitForEnd: true }
+  }
+
+  Process {
+    id: setAccessProcess
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.handleSetAccess(text)
     }
     stderr: StdioCollector { waitForEnd: true }
   }
@@ -2779,9 +2826,80 @@ BarWidget {
             Text {
               textFormat: Text.PlainText
               width: parent.width
-              text: "Omar works directly on this computer. There is no sandbox separating it from your files. The guard stops or asks about some known risky commands, but it cannot recognise every dangerous command."
+              text: "Shell commands run with your permissions. They are not sandboxed. High-risk commands still need approval in every mode."
               wrapMode: Text.WordWrap
               color: Qt.darker(root.foreground, 1.35)
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              Accessible.name: text
+            }
+
+            Flow {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Button {
+                text: (root.healthSystemAccess === "ask" ? "󰄬  " : "") + "Ask First"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                enabled: !root.accessSaving
+                tooltipText: "Approve one shell command or allow routine commands for 15 minutes"
+                Accessible.name: (root.healthSystemAccess === "ask" ? "Selected: " : "") + tooltipText
+                onClicked: root.selectSystemAccess("ask")
+              }
+
+              Button {
+                text: (root.healthSystemAccess === "off" ? "󰄬  " : "") + "Block Commands"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                enabled: !root.accessSaving
+                tooltipText: "Disable Omar’s shell command tool"
+                Accessible.name: (root.healthSystemAccess === "off" ? "Selected: " : "") + tooltipText
+                onClicked: root.selectSystemAccess("off")
+              }
+
+              Button {
+                text: (root.healthSystemAccess === "full" ? "󰄬  " : "")
+                  + (root.fullAccessPending ? "Confirm Allow All" : "Allow All")
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                enabled: !root.accessSaving
+                tooltipText: "Run routine shell commands without asking"
+                Accessible.name: (root.healthSystemAccess === "full" ? "Selected: " : "") + tooltipText
+                onClicked: root.selectSystemAccess("full")
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: root.healthSystemAccess === "off"
+                ? "Omar cannot run shell commands."
+                : root.healthSystemAccess === "full"
+                  ? "Routine commands run without asking. High-risk commands still need approval."
+                  : "Approve each command, or allow routine commands for the next 15 minutes."
+              wrapMode: Text.WordWrap
+              color: Qt.darker(root.foreground, 1.35)
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              Accessible.name: text
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              visible: root.accessSaveMessage !== ""
+              width: parent.width
+              text: root.accessSaveMessage
+              wrapMode: Text.WordWrap
+              color: root.fullAccessPending || root.healthSystemAccess === "full"
+                ? root.accent
+                : Qt.darker(root.foreground, 1.35)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
               font.pixelSize: Style.font.bodySmall
               Accessible.name: text
@@ -2924,7 +3042,7 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Omar works directly on this computer"
+                text: "Omar can run commands on this computer"
                 color: root.foreground
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.body
@@ -2935,7 +3053,40 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Omar works directly on this computer. There is no sandbox separating it from your files. The guard stops or asks about some known risky commands, but it cannot recognise every dangerous command."
+                text: "Commands run with your permissions and are not sandboxed."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Ask First is recommended"
+                color: root.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Approve one command, or allow commands for the next 15 minutes."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Want fewer prompts? Choose a different mode in Settings → Safety."
                 wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.35)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3296,7 +3447,7 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Allow this command?"
+                text: "Review shell command"
                 color: root.accent
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -3345,7 +3496,8 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "On this computer · Allow once"
+                text: "Allow once runs only this command. Allow for 15 minutes covers routine commands in your next requests; high-risk commands still ask."
+                wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.5)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -3378,8 +3530,21 @@ BarWidget {
                   fontSize: Style.font.bodySmall
                   Accessible.name: "Allow the command once"
                   Keys.onEscapePressed: root.respondToConfirmation("Deny")
-                  onClicked: root.respondToConfirmation("Allow")
+                  onClicked: root.respondToConfirmation("Allow once")
                 }
+              }
+
+              Button {
+                text: "Allow for 15 minutes"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+                fontSize: Style.font.bodySmall
+                Accessible.name: "Allow shell commands for 15 minutes"
+                Keys.onEscapePressed: root.respondToConfirmation("Deny")
+                onClicked: root.respondToConfirmation("Allow for 15 minutes")
               }
             }
           }

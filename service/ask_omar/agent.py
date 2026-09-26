@@ -21,9 +21,9 @@ omarchy, and normal desktop commands. Verify the result where practical and say
 what actually happened.
 
 Ask Omar can run fixed local actions when you ask for them by name, but that
-list is not your capability limit. Use read, grep, find, ls, and bash when they
-are the right tools. Do not open a visible terminal unless the user explicitly
-asks for one.
+list is not your capability limit. Use read, grep, find, ls, and run_command when
+they are available and are the right tools. Do not open a visible terminal unless
+the user explicitly asks for one.
 
 Use live desktop information when the user's request calls for it. Follow normal
 conversational references when earlier messages make them clear. If neither the
@@ -37,11 +37,12 @@ edit only the requested values under [agent] in ~/.config/ask-omar/config.toml.
 Explain that they must quit and reopen Ask Omar before the new values take effect;
 do not restart the service during the answer.
 
-Hard gates vs chat questions:
-- Dangerous, privileged, or irreversible bash (sudo, recursive delete, force-delete,
-  power control, and similar) is approved only through Ask Omar's Allow once / Deny
-  buttons. Never ask the user to confirm those same actions by typing yes/no in chat,
-  and never treat a chat reply as a substitute for that panel.
+Computer access:
+- Prefer the direct read, grep, find, and ls tools. When run_command is available,
+  use it only when a shell command is necessary and keep each command focused; do
+  not bundle unrelated actions. Ask Omar enforces the configured access mode outside
+  this prompt. Never ask the user to approve a command by typing yes/no in chat, and
+  never treat a chat reply as a substitute for the approval panel.
 - If a command was Denied or timed out in that panel, say so briefly and stop. Do not
   re-ask for permission in chat for the same command. Wait for a new explicit request.
 - Use a short chat question only for preference or identity (which app, which file,
@@ -97,11 +98,12 @@ class AgentCancelled(AgentError):
 
 
 class PiAgent:
-    confirmation_timeout_seconds = 300
+    confirmation_timeout_seconds = 90
     max_rpc_event_bytes = 4 * 1024 * 1024
     max_log_bytes = 1024 * 1024
+    temporary_grant_ms = 15 * 60 * 1000
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, temporary_grant_until: int = 0):
         self.config = config
         self.process: subprocess.Popen[bytes] | None = None
         self.buffer = b""
@@ -115,6 +117,12 @@ class PiAgent:
         self.activity_message = "Ready."
         self.query_active = False
         self.last_tools_used: list[str] = []
+        self.last_tool_description = ""
+        self.last_tool_completed = False
+        self.last_tool_failed = False
+        self.last_tool_call_id = ""
+        self.active_tool_descriptions: dict[str, str] = {}
+        self.temporary_grant_until = temporary_grant_until
         self.pending_confirmation: dict[str, Any] | None = None
         self.confirmation_lock = threading.Lock()
         self.confirmation_event = threading.Event()
@@ -134,7 +142,7 @@ class PiAgent:
             pi,
             "--mode", "rpc",
             "--no-session",
-            "--tools", "read,grep,find,ls,bash",
+            "--tools", "read,grep,find,ls,run_command",
             "--no-extensions",
             "--extension", str(guard_extension),
             "--no-skills",
@@ -144,7 +152,17 @@ class PiAgent:
             "--provider", self.config.provider,
             "--model", self.config.model,
             "--thinking", self.config.thinking,
-            "--system-prompt", SYSTEM_PROMPT,
+            "--system-prompt", (
+                SYSTEM_PROMPT
+                + f"\nCurrent system access mode: {self.config.system_access}. "
+                + (
+                    "The run_command tool asks before execution.\n"
+                    if self.config.system_access == "ask"
+                    else "The run_command tool is unavailable.\n"
+                    if self.config.system_access == "off"
+                    else "The user explicitly enabled Allow All; routine commands do not ask, but high-risk commands still require approval.\n"
+                )
+            ),
             "--name", "Ask Omar",
         ]
 
@@ -165,13 +183,17 @@ class PiAgent:
                 pass
             self.log_handle = log_path.open("ab")
             os.chmod(log_path, 0o600)
+            environment = os.environ.copy()
+            environment["ASK_OMAR_SYSTEM_ACCESS"] = self.config.system_access
+            environment["ASK_OMAR_GRANT_UNTIL"] = str(self.temporary_grant_until)
+            environment["ASK_OMAR_GRANT_DURATION_MS"] = str(self.temporary_grant_ms)
             self.process = subprocess.Popen(
                 self.command(),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=self.log_handle,
                 bufsize=0,
-                env=os.environ.copy(),
+                env=environment,
                 start_new_session=True,
             )
             self.buffer = b""
@@ -256,13 +278,13 @@ class PiAgent:
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise AgentError("Omar's AI response timed out.", "pi_timeout")
+                raise AgentError(self.timeout_message(), "pi_timeout")
             wait = remaining if poll_interval is None else min(remaining, poll_interval)
             ready = selector.select(wait)
             if not ready:
                 if poll_interval is not None and time.monotonic() < deadline:
                     return None
-                raise AgentError("Omar's AI response timed out.", "pi_timeout")
+                raise AgentError(self.timeout_message(), "pi_timeout")
             assert self.process and self.process.stdout
             chunk = os.read(self.process.stdout.fileno(), 65536)
             if not chunk:
@@ -299,14 +321,15 @@ class PiAgent:
 
     def respond_confirmation(self, request_id: str, response: str) -> bool:
         """Deliver one response only to the matching pending request."""
-        if response not in ("Allow", "Deny"):
-            return False
         with self.confirmation_lock:
             if (
                 not self.pending_confirmation
                 or self.pending_confirmation.get("id") != request_id
                 or self.confirmation_response is not None
             ):
+                return False
+            options = self.pending_confirmation.get("options", [])
+            if not isinstance(options, list) or response not in options:
                 return False
             self.confirmation_response = response
             self.confirmation_event.set()
@@ -329,6 +352,11 @@ class PiAgent:
         with self.lock:
             self._set_activity("Starting Pi…", True)
             self.last_tools_used = []
+            self.last_tool_description = ""
+            self.last_tool_completed = False
+            self.last_tool_failed = False
+            self.last_tool_call_id = ""
+            self.active_tool_descriptions = {}
             try:
                 return self._query_locked(message, cancel_event)
             finally:
@@ -373,18 +401,17 @@ class PiAgent:
                     if event is None:
                         continue
                     if event.get("type") == "tool_execution_start":
-                        tool_name = str(event.get("toolName", "tool")).strip() or "tool"
+                        tool_name = self._record_tool_start(event)
                         status = (
                             "Checking files…"
                             if tool_name in {"read", "grep", "find", "ls"}
                             else "Working with a command…"
-                            if tool_name == "bash"
+                            if tool_name == "run_command"
                             else "Working…"
                         )
                         self._set_activity(status)
-                        if tool_name not in self.last_tools_used:
-                            self.last_tools_used.append(tool_name)
                     elif event.get("type") == "tool_execution_end":
+                        self._record_tool_end(event)
                         self._set_activity("Thinking…")
                     elif event.get("type") == "extension_ui_request":
                         method = str(event.get("method", ""))
@@ -423,11 +450,15 @@ class PiAgent:
                         if response is None:
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "cancelled": True})
                             raise AgentError(
-                                "Command approval timed out. Use Allow once / Deny next time — "
+                                "Command approval timed out. Use Allow once, Allow for 15 minutes, or Deny next time — "
                                 "Omar will not ask for the same approval in chat.",
                                 "confirmation_timeout",
                             )
                         elif method == "select":
+                            if response == "Allow for 15 minutes":
+                                # The extension enforces the live grant. Mirror its expiry
+                                # here only so an internal Pi restart can restore it.
+                                self.temporary_grant_until = int(time.time() * 1000) + self.temporary_grant_ms
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "value": response})
                         elif method == "confirm":
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "confirmed": response.lower() in ("allow", "yes", "true")})
@@ -464,6 +495,57 @@ class PiAgent:
                 selector.close()
 
             return self.finish_response(final_answer, error_message)
+
+    @staticmethod
+    def _describe_tool(event: dict, tool_name: str) -> str:
+        args = event.get("args")
+        if tool_name == "run_command" and isinstance(args, dict):
+            command = " ".join(str(args.get("command", "")).split())
+            if command:
+                if len(command) > 160:
+                    command = command[:157] + "…"
+                return f"shell command “{command}”"
+        return f"the {tool_name} tool"
+
+    def _record_tool_start(self, event: dict) -> str:
+        tool_name = str(event.get("toolName", "tool")).strip() or "tool"
+        tool_call_id = str(event.get("toolCallId", ""))
+        description = self._describe_tool(event, tool_name)
+        self.last_tool_call_id = tool_call_id
+        self.last_tool_description = description
+        self.last_tool_completed = False
+        self.last_tool_failed = False
+        if tool_call_id:
+            self.active_tool_descriptions[tool_call_id] = description
+        if tool_name not in self.last_tools_used:
+            self.last_tools_used.append(tool_name)
+        return tool_name
+
+    def _record_tool_end(self, event: dict) -> None:
+        tool_call_id = str(event.get("toolCallId", ""))
+        description = self.active_tool_descriptions.get(tool_call_id, self.last_tool_description)
+        if tool_call_id:
+            self.active_tool_descriptions.pop(tool_call_id, None)
+        self.last_tool_call_id = tool_call_id
+        self.last_tool_description = description
+        self.last_tool_completed = True
+        self.last_tool_failed = bool(event.get("isError", False))
+
+    def revoke_temporary_grant(self) -> None:
+        self.temporary_grant_until = 0
+
+    def timeout_message(self) -> str:
+        if self.active_tool_descriptions:
+            description = next(reversed(self.active_tool_descriptions.values()))
+            action = "running" if description.startswith("shell command ") else "using"
+            return f"Omar's AI response timed out while {action} {description}."
+        if not self.last_tool_description:
+            return "Omar's AI response timed out."
+        if self.last_tool_failed:
+            return f"Omar's AI response timed out after {self.last_tool_description} returned an error."
+        action = "running" if self.last_tool_description.startswith("shell command ") else "using"
+        timing = f"after {action}" if self.last_tool_completed else f"while {action}"
+        return f"Omar's AI response timed out {timing} {self.last_tool_description}."
 
     @staticmethod
     def _text_from_message(message: dict) -> str:

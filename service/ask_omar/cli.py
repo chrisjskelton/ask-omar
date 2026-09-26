@@ -138,7 +138,7 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser("activity", help="Show the current Pi activity")
     confirm = commands.add_parser("confirm", help="Respond to a pending command confirmation")
     confirm.add_argument("id", help="Pending confirmation ID")
-    confirm.add_argument("response", help="Allow or Deny")
+    confirm.add_argument("response", help="Approval option returned by the confirmation panel")
     commands.add_parser("history", help="Show recent local history")
     commands.add_parser("clear-history", help="Clear recent local history")
     draft = commands.add_parser("draft", help="Save an unsent draft")
@@ -176,6 +176,8 @@ def parser() -> argparse.ArgumentParser:
     set_agent.add_argument("--provider")
     set_agent.add_argument("--model")
     set_agent.add_argument("--thinking")
+    set_access = commands.add_parser("set-access", help="Change model-generated command access")
+    set_access.add_argument("mode", choices=("ask", "off", "full"))
     commands.add_parser("serve", help="Run the local service")
     return result
 
@@ -249,6 +251,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.thinking:
             payload["thinking"] = args.thinking
         return print_json(request(payload))
+    if args.command == "set-access":
+        return print_json(request({"type": "set_system_access", "mode": args.mode}))
     return 2
 
 

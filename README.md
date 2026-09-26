@@ -4,7 +4,7 @@
 
 Type a question in the top bar. Answers and follow-ups open in a panel beneath it; notes, capture and optional dictation are a click away. Ask Omar stays part of your desktop, without another terminal to open. Built for Omarchy, powered by [Pi](https://pi.dev).
 
-**Experimental 0.1.0.** Runs with your user permissions. The command guard is a convenience brake, not a sandbox. Agent requests need Pi and a connected model provider; notes and capture do not.
+Ask Omar runs with your user permissions. **Ask First** shows shell commands before they run and can allow routine commands for 15 minutes; this is not a sandbox. Agent requests need Pi and a connected model provider; notes and capture do not.
 
 ![Ask Omar beneath the Omarchy top bar, showing a shortcut cheat sheet](docs/media/ask-omar-topbar.png)
 
@@ -17,7 +17,7 @@ Type a question in the top bar. Answers and follow-ups open in a panel beneath i
 - **Capture and dictate.** Screenshot/recording shortcuts put a file path on your clipboard or attach a screenshot to a note. Optional [Voxtype](https://voxtype.io) dictation makes a draft; you choose when to send it.
 - **Revisit answers.** Read recent questions and answers in Settings. Opening a saved answer does not restart that conversation.
 
-Try “What's the shortcut to move a window to workspace 2?” or a bounded task such as “Sort the example files in this folder by type.” The agent can use `read`, `grep`, `find`, `ls` and `bash`. Results and available actions depend on your model and installed tools.
+Try “What's the shortcut to move a window to workspace 2?” or a bounded task such as “Sort the example files in this folder by type.” The agent can inspect files and, with the access you choose, run shell commands. Results and available actions depend on your model and installed tools.
 
 ## Requirements
 
@@ -35,7 +35,7 @@ The installer checks dependencies before changing files. It does not request roo
 Read the permissions below first, then clone and inspect the release:
 
 ```bash
-git clone --branch v0.1.0 https://github.com/chrisjskelton/ask-omar.git
+git clone --branch v0.1.1 https://github.com/chrisjskelton/ask-omar.git
 cd ask-omar
 make install
 ```
@@ -72,9 +72,11 @@ Then run `ask-omar setup`. A marketplace listing is discovery, not a security ce
 
 Omar runs as you. It can read your files, run programs and use the network. A task may request administrator access; whether that works depends on your host's authentication and privilege policy.
 
-Recognized risky commands pause for **Allow once / Deny**. Some known catastrophic patterns are blocked. Stop cancels the active task, but **does not undo actions already completed**.
+Pi's native Bash tool is disabled. Model-generated commands can run only through Ask Omar's command tool. The default **Ask First** mode shows the exact command with **Allow once**, **Allow for 15 minutes**, and **Deny**. A temporary grant covers routine commands in later requests until 15 minutes pass; New conversation or a service restart ends it early. Pi's direct `read`, `grep`, `find` and `ls` tools remain automatic so ordinary inspection does not become a wall of prompts.
 
-The guard checks command text patterns. It cannot detect every dangerous command or isolate the agent from credentials. Other processes running as your user share access to local state and the service. Grant access on the same terms as a terminal agent; this release is not intended for unattended sensitive workloads.
+Settings also offers **Block Commands**, which disables Omar's shell command tool, and **Allow All**, which runs routine shell commands without asking. Allow All requires a second click to enable and remains visibly selected. Commands are limited to 60 seconds, 32 KiB of command text and 64 KiB of captured output. Stop cancels the active task, but **does not undo actions already completed**.
+
+Ask Omar always asks again before a small set of clearly high-risk commands, including recursive forced deletion (`rm -rf`), disk erasure, raw-device writes, privilege elevation, power controls, downloaded code piped into a shell and fork bombs. This is an extra warning, not a comprehensive shell analyser: commands can express the same effects in other ways. It does not isolate the agent from files or credentials that direct tools can read, and approved commands run with your user permissions. Review commands as carefully as you would in a terminal; this release is not intended for unattended sensitive workloads.
 
 ## Privacy and retention
 
