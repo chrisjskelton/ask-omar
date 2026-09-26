@@ -1289,7 +1289,7 @@ BarWidget {
     if (accessSaving || setAccessProcess.running) return
     if (mode === "full" && !fullAccessPending) {
       fullAccessPending = true
-      accessSaveMessage = "Allow All runs shell commands without asking. Known catastrophic commands remain blocked. Click again to enable it."
+      accessSaveMessage = "Allow All runs routine shell commands without asking. High-risk commands still need approval. Click again to enable it."
       return
     }
     fullAccessPending = false
@@ -2826,7 +2826,7 @@ BarWidget {
             Text {
               textFormat: Text.PlainText
               width: parent.width
-              text: "Shell commands run with your permissions. They are not sandboxed. Ask First is recommended."
+              text: "Shell commands run with your permissions. They are not sandboxed. High-risk commands still need approval in every mode."
               wrapMode: Text.WordWrap
               color: Qt.darker(root.foreground, 1.35)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -2845,7 +2845,7 @@ BarWidget {
                 foreground: root.foreground
                 accent: root.accent
                 enabled: !root.accessSaving
-                tooltipText: "Approve one shell command or allow commands for 15 minutes"
+                tooltipText: "Approve one shell command or allow routine commands for 15 minutes"
                 Accessible.name: (root.healthSystemAccess === "ask" ? "Selected: " : "") + tooltipText
                 onClicked: root.selectSystemAccess("ask")
               }
@@ -2870,7 +2870,7 @@ BarWidget {
                 foreground: root.foreground
                 accent: root.accent
                 enabled: !root.accessSaving
-                tooltipText: "Run shell commands without asking"
+                tooltipText: "Run routine shell commands without asking"
                 Accessible.name: (root.healthSystemAccess === "full" ? "Selected: " : "") + tooltipText
                 onClicked: root.selectSystemAccess("full")
               }
@@ -2882,8 +2882,8 @@ BarWidget {
               text: root.healthSystemAccess === "off"
                 ? "Omar cannot run shell commands."
                 : root.healthSystemAccess === "full"
-                  ? "Commands run without asking. Known catastrophic commands remain blocked."
-                  : "Approve one command, or allow commands for the next 15 minutes."
+                  ? "Routine commands run without asking. High-risk commands still need approval."
+                  : "Approve each command, or allow routine commands for the next 15 minutes."
               wrapMode: Text.WordWrap
               color: Qt.darker(root.foreground, 1.35)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3496,7 +3496,7 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Allow once runs only this command. Allow for 15 minutes also covers commands in your next requests."
+                text: "Allow once runs only this command. Allow for 15 minutes covers routine commands in your next requests; high-risk commands still ask."
                 wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.5)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family

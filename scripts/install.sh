@@ -9,7 +9,6 @@ PLUGIN_TARGET="$CONFIG_HOME/omarchy/plugins/ask-omar.assistant"
 APP_TARGET="$DATA_HOME/ask-omar"
 SERVICE_TARGET="$CONFIG_HOME/systemd/user/ask-omar.service"
 CONFIG_TARGET="$CONFIG_HOME/ask-omar/config.toml"
-GUARD_TARGET="$CONFIG_HOME/ask-omar/guard.json"
 DESKTOP_TARGET="$DATA_HOME/applications/ask-omar.desktop"
 SETTINGS_DESKTOP_TARGET="$DATA_HOME/applications/ask-omar-settings.desktop"
 
@@ -31,7 +30,7 @@ for source in \
   "$ROOT/service/ask_omar/__main__.py" \
   "$ROOT/service/ask_omar/extensions/ask-omar-guard.ts" \
   "$ROOT/systemd/ask-omar.service" "$ROOT/scripts/capture.sh" \
-  "$ROOT/config/config.example.toml" "$ROOT/config/guard.example.json" \
+  "$ROOT/config/config.example.toml" \
   "$ROOT/desktop/ask-omar.desktop" "$ROOT/desktop/ask-omar-settings.desktop"; do
   [[ -f "$source" ]] || { echo "Missing source file: $source" >&2; exit 1; }
 done
@@ -131,11 +130,6 @@ if [[ ! -f "$CONFIG_TARGET" ]]; then
   install -m 600 "$ROOT/config/config.example.toml" "$CONFIG_TARGET"
 else
   chmod 600 "$CONFIG_TARGET"
-fi
-if [[ ! -f "$GUARD_TARGET" ]]; then
-  install -m 600 "$ROOT/config/guard.example.json" "$GUARD_TARGET"
-else
-  chmod 600 "$GUARD_TARGET"
 fi
 
 cat >"$BIN_HOME/ask-omar" <<'WRAPPER'

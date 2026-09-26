@@ -1,15 +1,15 @@
 # Changelog
 
-## 0.1.1 — Brokered system access
+## 0.1.1 — Command access controls
 
-- Pi's unrestricted Bash tool is replaced by an Ask Omar-owned command broker.
+- Pi's unrestricted Bash tool is replaced by Ask Omar's command tool.
 - Ask First shows the exact command with Allow once, Allow for 15 minutes, and Deny.
-- Temporary grants cover later requests for up to 15 minutes and end early on New conversation or service restart.
+- Temporary grants cover routine commands in later requests for up to 15 minutes and end early on New conversation or service restart.
 - Timeouts identify the last tool or shell command Pi was using when available.
-- The broker restores the selected access mode after commands and stops escaped descendants on timeout or cancellation.
-- Block Commands disables the shell command tool; explicitly enabled Allow All runs commands without asking.
+- Block Commands disables the shell command tool; explicitly enabled Allow All runs routine commands without asking.
 - Direct read-only Pi tools remain automatic to keep routine inspection quick.
-- Mandatory catastrophic hard blocks remain active in every mode; Ask First also shows recognised-risk warnings.
+- Clearly high-risk commands such as `rm -rf` always require fresh approval, including during temporary grants and Allow All.
+- The high-risk check is an additional warning gate, not a sandbox or comprehensive shell analyser.
 - Commands are bounded to 60 seconds, 32 KiB of command text, and 64 KiB of captured output.
 - The assistant prompt prefers direct read-only tools and focused shell commands instead of bundled command chains.
 

@@ -160,7 +160,7 @@ class PiAgent:
                     if self.config.system_access == "ask"
                     else "The run_command tool is unavailable.\n"
                     if self.config.system_access == "off"
-                    else "The user explicitly enabled Allow All; run_command does not ask.\n"
+                    else "The user explicitly enabled Allow All; routine commands do not ask, but high-risk commands still require approval.\n"
                 )
             ),
             "--name", "Ask Omar",
@@ -186,6 +186,7 @@ class PiAgent:
             environment = os.environ.copy()
             environment["ASK_OMAR_SYSTEM_ACCESS"] = self.config.system_access
             environment["ASK_OMAR_GRANT_UNTIL"] = str(self.temporary_grant_until)
+            environment["ASK_OMAR_GRANT_DURATION_MS"] = str(self.temporary_grant_ms)
             self.process = subprocess.Popen(
                 self.command(),
                 stdin=subprocess.PIPE,
@@ -455,6 +456,8 @@ class PiAgent:
                             )
                         elif method == "select":
                             if response == "Allow for 15 minutes":
+                                # The extension enforces the live grant. Mirror its expiry
+                                # here only so an internal Pi restart can restore it.
                                 self.temporary_grant_until = int(time.time() * 1000) + self.temporary_grant_ms
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "value": response})
                         elif method == "confirm":

@@ -7,7 +7,7 @@ preserve these principles:
 2. Discover capabilities instead of assuming specific installed apps.
 3. Keep fixed desktop actions structured and reviewable. Pi may use its direct
    `read`, `grep`, `find`, and `ls` tools. Shell commands must go through Ask
-   Omar's broker; preserve its access modes, approval UI, runtime limits, and
+   Omar's command tool; preserve its access modes, approval UI, runtime limits, and
    clear reporting.
 4. Keep local actions useful when the AI backend is unavailable.
 5. Store configuration and state in XDG user directories.
