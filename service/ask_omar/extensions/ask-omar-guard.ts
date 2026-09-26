@@ -68,7 +68,7 @@ const RISK_RULES: RiskRule[] = [
 ];
 
 function normalizeForRiskCheck(command: string): string {
-  const continuations = command.replace(/(\\+)\r?\n/g, (_match, slashes: string) => {
+  const continuations = command.replace(/(\\+)\n/g, (_match, slashes: string) => {
     const literalBackslashes = "\\".repeat(Math.floor(slashes.length / 2));
     return slashes.length % 2 === 0 ? `${literalBackslashes}\n` : literalBackslashes;
   });

@@ -119,6 +119,7 @@ class GuardExtensionTests(unittest.TestCase):
             "rm -r -f ./build": "Recursive forced deletion",
             "rm -\\\nrf /tmp/example": "Recursive forced deletion",
             "false \\\\\nrm -rf /tmp/example": "Recursive forced deletion",
+            "false \\\r\nrm -rf /tmp/example": "Recursive forced deletion",
             "r'm' -r'f' /tmp/example": "Recursive forced deletion",
             "mkfs.ext4 /dev/sda": "Disk or filesystem erasure",
             "dd if=image.iso of=/dev/sdb": "Raw device write",
@@ -209,6 +210,7 @@ class GuardExtensionTests(unittest.TestCase):
             "sudo true",
             "rm -\\\nrf /tmp/example",
             "false \\\\\nrm -rf /tmp/example",
+            "false \\\r\nrm -rf /tmp/example",
             'dd if=x of="/dev/sdb"',
         ]
         payload = run_broker(commands, mode="full", choices=["Deny"] * len(commands))
