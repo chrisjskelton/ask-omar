@@ -140,7 +140,13 @@ class GuardExtensionTests(unittest.TestCase):
                 self.assertEqual(evaluate(command)["reason"], reason)
 
     def test_routine_commands_are_not_flagged(self):
-        for command in ("ls -la", "rm ./draft.txt", "printf safely", "cat README.md"):
+        for command in (
+            "ls -la",
+            "rm ./draft.txt",
+            "printf safely",
+            "cat README.md",
+            "printf '%s\\n' sudo\\\nhelper",
+        ):
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))
 

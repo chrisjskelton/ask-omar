@@ -68,19 +68,17 @@ const RISK_RULES: RiskRule[] = [
 ];
 
 function normalizeForRiskCheck(command: string): string {
-  return command
-    .replace(/\\\r?\n/g, "")
+  const continuations = command.replace(/(\\+)\r?\n/g, (_match, slashes: string) => {
+    const literalBackslashes = "\\".repeat(Math.floor(slashes.length / 2));
+    return slashes.length % 2 === 0 ? `${literalBackslashes}\n` : literalBackslashes;
+  });
+  return continuations
     .replace(/\\([^\n])/g, "$1");
 }
 
 export function evaluateCommand(command: string): RiskRule | null {
   const normalized = normalizeForRiskCheck(command);
-  const variants = [
-    command,
-    normalized,
-    command.replace(/["']/g, ""),
-    normalized.replace(/["']/g, ""),
-  ];
+  const variants = [normalized, normalized.replace(/["']/g, "")];
   return RISK_RULES.find((rule) => variants.some((value) => rule.pattern.test(value))) ?? null;
 }
 
