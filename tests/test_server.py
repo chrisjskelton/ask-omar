@@ -544,6 +544,39 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "invalid_system_access")
         old_agent.stop.assert_not_called()
 
+    def test_set_system_access_rejects_changes_during_active_request(self):
+        old_agent = Mock()
+        self.omar.agent = old_agent
+        with self.omar.active_lock:
+            self.omar.active_cancel_event = threading.Event()
+        result = self.omar.set_system_access("unrestricted")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "request_active")
+        old_agent.stop.assert_not_called()
+
+    def test_set_system_access_does_not_queue_before_request_becomes_active(self):
+        old_agent = Mock()
+        self.omar.agent = old_agent
+        locked = threading.Event()
+        release = threading.Event()
+
+        def hold_foreground_lock():
+            with self.omar.foreground_lock:
+                locked.set()
+                release.wait(timeout=2)
+
+        holder = threading.Thread(target=hold_foreground_lock)
+        holder.start()
+        self.assertTrue(locked.wait(timeout=2))
+        try:
+            result = self.omar.set_system_access("unrestricted")
+        finally:
+            release.set()
+            holder.join(timeout=2)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error_code"], "request_active")
+        old_agent.stop.assert_not_called()
+
     def test_set_system_access_accepts_unrestricted_mode(self):
         config_path = Path(self.temp.name) / "config.toml"
         config_path.write_text(

@@ -362,10 +362,24 @@ class AskOmar:
         if mode not in SYSTEM_ACCESS_MODES:
             return {
                 "ok": False,
-                "error": "System access must be Ask First, Ask for High-Risk Commands, Always Allow, or Block Commands.",
+                "error": "System access must be Ask First, Ask for Recognized Risks, Always Allow, or Block Commands.",
                 "error_code": "invalid_system_access",
             }
-        with self.foreground_lock:
+        if not self.foreground_lock.acquire(blocking=False):
+            return {
+                "ok": False,
+                "error": "Stop the current request before changing system access.",
+                "error_code": "request_active",
+            }
+        try:
+            with self.active_lock:
+                request_active = self.active_cancel_event is not None
+            if request_active:
+                return {
+                    "ok": False,
+                    "error": "Stop the current request before changing system access.",
+                    "error_code": "request_active",
+                }
             try:
                 update_agent_settings(self.config_path, system_access=mode)
             except ValueError as error:
@@ -375,11 +389,13 @@ class AskOmar:
                 self.agent.stop()
             self.config = Config.load(self.config_path)
             self.agent = PiAgent(self.config) if self.config.backend == "pi" else None
-        return self.response(
-            kind="system_access",
-            system_access=self.config.system_access,
-            message="System access updated. New requests use this mode.",
-        )
+            return self.response(
+                kind="system_access",
+                system_access=self.config.system_access,
+                message="System access updated. New requests use this mode.",
+            )
+        finally:
+            self.foreground_lock.release()
 
     @staticmethod
     def friendly_error(message: str) -> str:

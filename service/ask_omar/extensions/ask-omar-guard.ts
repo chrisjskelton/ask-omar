@@ -8,6 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -28,6 +29,123 @@ const REMOTE_SHELL_PIPE = new RegExp(
   String.raw`\b(?:curl|wget)\b[^|\n]*\|\s*${COMMAND_WRAPPER}${SHELL_EXECUTABLE}`,
   "i",
 );
+const CONTAINER_HOST_ACCESS: RiskRule = {
+  pattern: /\b(?:docker|podman)\b/i,
+  reason: "Privileged container access",
+  description: "give a container broad access to the host computer",
+};
+const CONTAINER_HOST_NAMESPACES = new Set([
+  "--pid", "--network", "--net", "--userns", "--uts", "--ipc",
+]);
+const CONTAINER_GLOBAL_BOOLEAN_OPTIONS = new Set([
+  "--debug", "--help", "--remote", "--syslog", "--tls", "--tlsverify", "--transient-store", "-D",
+]);
+const CONTAINER_GLOBAL_VALUE_OPTIONS = new Set([
+  "--config", "--connection", "--context", "--events-backend", "--host", "--identity",
+  "--log-level", "--root", "--runroot", "--runtime", "--storage-driver", "--url", "-c", "-H", "-l",
+]);
+const CONTAINER_BOOLEAN_OPTIONS = new Set([
+  "--detach", "--disable-content-trust", "--help", "--init", "--interactive", "--oom-kill-disable",
+  "--privileged", "--publish-all", "--read-only", "--remove", "--replace", "--rm", "--sig-proxy", "--tty",
+  "-d", "-i", "-P", "-t",
+]);
+const CONTAINER_VALUE_OPTIONS = new Set([
+  "--add-host", "--annotation", "--attach", "--blkio-weight-device", "--cap-add",
+  "--blkio-weight", "--cap-drop", "--cgroup-parent", "--cgroupns", "--cidfile", "--cpu-period",
+  "--cpu-quota", "--cpu-rt-period", "--cpu-rt-runtime", "--cpu-shares", "--cpus", "--cpuset-cpus",
+  "--cpuset-mems", "--device", "--device-cgroup-rule", "--device-read-bps", "--device-read-iops",
+  "--device-write-bps", "--device-write-iops", "--dns", "--dns-option", "--dns-search",
+  "--domainname", "--entrypoint", "--env", "--env-file", "--expose", "--gpus", "--group-add",
+  "--health-cmd", "--health-interval", "--health-retries", "--health-start-interval",
+  "--health-start-period", "--health-timeout", "--hostname", "--ip", "--ip6", "--isolation",
+  "--label", "--label-file", "--link", "--link-local-ip", "--log-driver", "--log-opt", "--mac-address",
+  "--memory", "--memory-reservation", "--memory-swap", "--memory-swappiness", "--mount", "--name",
+  "--network-alias", "--oom-score-adj", "--pids-limit", "--platform", "--publish", "--pull", "--restart",
+  "--runtime", "--security-opt", "--shm-size", "--stop-signal",
+  "--stop-timeout", "--storage-opt", "--sysctl", "--tmpfs", "--ulimit", "--user", "--volume",
+  "--volume-driver", "--volumes-from", "--workdir",
+]);
+const CONTAINER_SHORT_VALUE_OPTIONS = new Set(["-a", "-c", "-e", "-h", "-l", "-m", "-p", "-u", "-v", "-w"]);
+const SHELL_SEPARATOR = /^(?:;|&&|\|\||\||&)$/;
+const HOST_SOCKET = /\/(?:var\/)?run\/(?:docker|podman)\.sock(?:$|:)/i;
+
+function shellTokens(command: string): string[] {
+  const tokens = command.match(/"(?:\\.|[^"\\])*"|'[^']*'|&&|\|\||[;&|]|[^\s;&|]+/g) ?? [];
+  return tokens.map((token) => {
+    if ((token.startsWith('"') && token.endsWith('"'))
+        || (token.startsWith("'") && token.endsWith("'"))) {
+      return token.slice(1, -1);
+    }
+    return token;
+  });
+}
+
+function dangerousContainerValue(option: string, value: string): boolean {
+  if (CONTAINER_HOST_NAMESPACES.has(option)) return value.toLowerCase() === "host";
+  if (option === "-v" || option === "--volume") {
+    return /^\/?:(?:\/|$)/.test(value) || HOST_SOCKET.test(value);
+  }
+  if (option === "--mount") {
+    return /(?:^|,)(?:source|src)=\/?(?:,|$)/i.test(value) || HOST_SOCKET.test(value);
+  }
+  return false;
+}
+
+function hasContainerHostAccess(command: string): boolean {
+  const tokens = shellTokens(command);
+  for (let index = 0; index + 2 < tokens.length; index++) {
+    const executable = tokens[index].split("/").pop()?.toLowerCase();
+    if (executable !== "docker" && executable !== "podman") continue;
+
+    let subcommandIndex = index + 1;
+    while (subcommandIndex < tokens.length && tokens[subcommandIndex].startsWith("-")) {
+      const token = tokens[subcommandIndex];
+      const equalsAt = token.indexOf("=");
+      const rawOption = equalsAt === -1 ? token : token.slice(0, equalsAt);
+      const option = rawOption.startsWith("--") ? rawOption.toLowerCase() : rawOption;
+      if (equalsAt !== -1 || CONTAINER_GLOBAL_BOOLEAN_OPTIONS.has(option)) {
+        subcommandIndex += 1;
+      } else if (CONTAINER_GLOBAL_VALUE_OPTIONS.has(option) || option.startsWith("--")) {
+        subcommandIndex += 2;
+      } else {
+        subcommandIndex += 1;
+      }
+    }
+    if (!/^(?:run|create)$/i.test(tokens[subcommandIndex] ?? "")) continue;
+
+    for (let optionIndex = subcommandIndex + 1; optionIndex < tokens.length;) {
+      const token = tokens[optionIndex];
+      if (SHELL_SEPARATOR.test(token) || token === "--") break;
+      if (!token.startsWith("-")) break; // The first positional argument is the image.
+      if (/^--privileged(?:=|$)/i.test(token)) return true;
+      if (/^-v./i.test(token) && dangerousContainerValue("-v", token.slice(2).replace(/^=/, ""))) {
+        return true;
+      }
+
+      const equalsAt = token.indexOf("=");
+      const rawOption = equalsAt === -1 ? token : token.slice(0, equalsAt);
+      const option = rawOption.startsWith("--") ? rawOption.toLowerCase() : rawOption;
+      const inlineValue = equalsAt === -1 ? "" : token.slice(equalsAt + 1);
+      if (inlineValue && dangerousContainerValue(option, inlineValue)) return true;
+
+      const takesSeparateValue = equalsAt === -1
+        && (CONTAINER_HOST_NAMESPACES.has(option)
+          || CONTAINER_VALUE_OPTIONS.has(option)
+          || CONTAINER_SHORT_VALUE_OPTIONS.has(option)
+          || (option.startsWith("--")
+            && !CONTAINER_BOOLEAN_OPTIONS.has(option)
+            && !(tokens[optionIndex + 1] ?? "").startsWith("-")));
+      if (takesSeparateValue) {
+        const value = tokens[optionIndex + 1] ?? "";
+        if (dangerousContainerValue(option, value)) return true;
+        optionIndex += 2;
+      } else {
+        optionIndex += 1;
+      }
+    }
+  }
+  return false;
+}
 
 const RISK_RULES: RiskRule[] = [
   {
@@ -81,9 +199,14 @@ const RISK_RULES: RiskRule[] = [
     description: "shut down or restart the computer",
   },
   {
-    pattern: /\b(?:docker|podman)\s+(?:run|create)\b(?=[^;&|\n]*(?:--privileged(?:=\S+)?|--(?:pid|network|net|userns|uts|ipc)(?:=|\s+)host\b|(?:-v(?:=|\s*)|--volume(?:=|\s+))\/?:(?:\/|\s)|--mount(?:=|\s+)[^;&|\n]*(?:source|src)=\/?(?:,|\s|$)|\/(?:var\/)?run\/(?:docker|podman)\.sock))/i,
-    reason: "Privileged container access",
-    description: "give a container broad access to the host computer",
+    pattern: /(?:\bask-omar\b|\bpython(?:3(?:\.\d+)?)?\b[^;&|\n]*\s-m\s+ask_omar)\s+set-access\s+(?:full|unrestricted)\b/i,
+    reason: "Safeguard change",
+    description: "reduce future command approval prompts",
+  },
+  {
+    pattern: /(?=[^;&|\n]*\b(?:full|unrestricted)\b)(?=[^;&|\n]*\bask-omar\/config\.toml\b)[^;&|\n]*(?:\b(?:sed|perl)\b[^;&|\n]*\s-[A-Za-z]*i[A-Za-z]*\b|(?:^|\s)(?:>>?|tee\b))/i,
+    reason: "Safeguard change",
+    description: "change Ask Omar's persistent command approval settings",
   },
   {
     pattern: REMOTE_SHELL_PIPE,
@@ -109,6 +232,7 @@ function normalizeForRiskCheck(command: string): string {
 export function evaluateCommand(command: string): RiskRule | null {
   const normalized = normalizeForRiskCheck(command);
   const variants = [normalized, normalized.replace(/["']/g, "")];
+  if (variants.some(hasContainerHostAccess)) return CONTAINER_HOST_ACCESS;
   return RISK_RULES.find((rule) => variants.some((value) => rule.pattern.test(value))) ?? null;
 }
 
@@ -127,6 +251,80 @@ const COMMAND_TIMEOUT_MS = 60_000;
 const DEFAULT_TEMPORARY_GRANT_MS = 15 * 60_000;
 const OUTPUT_LIMIT_BYTES = 64 * 1024;
 const COMMAND_LIMIT_BYTES = 32 * 1024;
+let commandSequence = 0;
+const PARENT_WATCHED_SHELL = String.raw`
+parent_pid=$1
+command=$2
+unit=$3
+launcher_pid=$$
+setsid /bin/bash -c '
+  parent_pid=$1
+  unit=$2
+  launcher_pid=$3
+  seen_scope=0
+  while kill -0 "$parent_pid" 2>/dev/null; do
+    state=$(systemctl --user show --property=ActiveState --value "$unit.scope" 2>/dev/null || true)
+    case "$state" in
+      active|activating|deactivating) seen_scope=1 ;;
+      *)
+        if [ "$seen_scope" -eq 1 ]; then exit 0; fi
+        launcher_state=$(ps -o stat= -p "$launcher_pid" 2>/dev/null || true)
+        case "$launcher_state" in ""|Z*) exit 0 ;; esac
+        ;;
+    esac
+    sleep 0.1
+  done
+  trap "" TERM
+  systemctl --user kill --kill-whom=all --signal=SIGTERM "$unit.scope" 2>/dev/null || true
+  sleep 1
+  systemctl --user kill --kill-whom=all --signal=SIGKILL "$unit.scope" 2>/dev/null || true
+' ask-omar-watchdog "$parent_pid" "$unit" "$launcher_pid" </dev/null >/dev/null 2>&1 &
+watchdog_pid=$!
+systemd-run --user --scope --quiet --collect --expand-environment=no \
+  --property=PartOf=ask-omar.service --property=TimeoutStopSec=1s \
+  --unit="$unit" -- /bin/bash -lc "$command"
+status=$?
+if ! systemctl --user is-active --quiet "$unit.scope" 2>/dev/null; then
+  kill "$watchdog_pid" 2>/dev/null || true
+  wait "$watchdog_pid" 2>/dev/null || true
+fi
+exit "$status"
+`;
+const FALLBACK_PARENT_WATCHED_SHELL = String.raw`
+parent_pid=$1
+command=$2
+command_group=$$
+setsid /bin/bash -c '
+  parent_pid=$1
+  command_group=$2
+  cleanup_requested=0
+  trap "cleanup_requested=1" USR1
+  while kill -0 "$parent_pid" 2>/dev/null && [ "$cleanup_requested" -eq 0 ]; do
+    wrapper_state=$(ps -o stat= -p "$command_group" 2>/dev/null || true)
+    case "$wrapper_state" in ""|Z*) break ;; esac
+    sleep 0.1
+  done
+  trap "" TERM
+  found=0
+  for pid in $(pgrep -g "$command_group" 2>/dev/null || true); do
+    if [ "$pid" != "$command_group" ]; then
+      found=1
+      kill -TERM "$pid" 2>/dev/null || true
+    fi
+  done
+  [ "$found" -eq 0 ] && exit 0
+  sleep 1
+  for pid in $(pgrep -g "$command_group" 2>/dev/null || true); do
+    [ "$pid" = "$command_group" ] || kill -KILL "$pid" 2>/dev/null || true
+  done
+' ask-omar-watchdog "$parent_pid" "$command_group" &
+watchdog_pid=$!
+/bin/bash -lc "$command"
+status=$?
+kill -USR1 "$watchdog_pid" 2>/dev/null || true
+wait "$watchdog_pid" 2>/dev/null || true
+exit "$status"
+`;
 
 function accessMode(): AccessMode {
   const value = String(process.env.ASK_OMAR_SYSTEM_ACCESS || "ask").toLowerCase();
@@ -147,16 +345,36 @@ function stopProcess(pid: number | undefined, signal: NodeJS.Signals): void {
   }
 }
 
+function stopUnit(unit: string, signal: NodeJS.Signals): void {
+  const systemctl = spawn(
+    "/usr/bin/systemctl",
+    ["--user", "kill", "--kill-whom=all", `--signal=${signal}`, `${unit}.scope`],
+    { detached: true, stdio: "ignore" },
+  );
+  systemctl.unref();
+}
+
 function executeShell(command: string, cwd: string, signal?: AbortSignal): Promise<CommandResult> {
   if (signal?.aborted) throw new Error("Command cancelled before it started.");
 
   return new Promise((resolve, reject) => {
-    const child = spawn("/bin/bash", ["-lc", command], {
-      cwd,
-      env: process.env,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const unit = `ask-omar-command-${process.pid}-${++commandSequence}`;
+    const runtimeDir = process.env.XDG_RUNTIME_DIR ?? "";
+    const useSystemdScope = runtimeDir !== "" && existsSync(`${runtimeDir}/systemd/private`);
+    const wrapper = useSystemdScope ? PARENT_WATCHED_SHELL : FALLBACK_PARENT_WATCHED_SHELL;
+    const wrapperArguments = useSystemdScope
+      ? ["-c", wrapper, "ask-omar-command", String(process.pid), command, unit]
+      : ["-c", wrapper, "ask-omar-command", String(process.pid), command];
+    const child = spawn(
+      "/bin/bash",
+      wrapperArguments,
+      {
+        cwd,
+        env: process.env,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let capturedBytes = 0;
@@ -165,9 +383,10 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
     let outputLimited = false;
     let killTimer: NodeJS.Timeout | undefined;
     let settled = false;
+    let terminating = false;
 
-    const finish = (code: number | null) => {
-      if (settled) return;
+    const finish = (code: number | null, forced = false) => {
+      if (settled || (terminating && !forced)) return;
       settled = true;
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
@@ -183,12 +402,16 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
     };
 
     const terminate = () => {
+      if (terminating) return;
+      terminating = true;
+      if (useSystemdScope) stopUnit(unit, "SIGTERM");
       stopProcess(child.pid, "SIGTERM");
       killTimer ??= setTimeout(() => {
+        if (useSystemdScope) stopUnit(unit, "SIGKILL");
         stopProcess(child.pid, "SIGKILL");
         child.stdout.destroy();
         child.stderr.destroy();
-        finish(null);
+        finish(null, true);
       }, 1000);
     };
     const append = (target: Buffer[], chunk: Buffer) => {
@@ -204,7 +427,6 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
       aborted = true;
       terminate();
     };
-    signal?.addEventListener("abort", abort, { once: true });
     child.stdout.on("data", (chunk: Buffer) => append(stdout, chunk));
     child.stderr.on("data", (chunk: Buffer) => append(stderr, chunk));
 
@@ -213,6 +435,8 @@ function executeShell(command: string, cwd: string, signal?: AbortSignal): Promi
       terminate();
     }, COMMAND_TIMEOUT_MS);
     timeout.unref();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
 
     child.once("error", (error) => {
       if (settled) return;
