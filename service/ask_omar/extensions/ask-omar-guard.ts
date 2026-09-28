@@ -81,7 +81,7 @@ const RISK_RULES: RiskRule[] = [
     description: "shut down or restart the computer",
   },
   {
-    pattern: /\b(?:docker|podman)\s+(?:run|create)\b(?=[^;&|\n]*(?:--privileged(?:=\S+)?|--(?:pid|network|userns|uts|ipc)=host\b|(?:-v(?:=|\s*)|--volume(?:=|\s+))\/?:(?:\/|\s)|--mount(?:=|\s+)[^;&|\n]*(?:source|src)=\/?(?:,|\s|$)|\/(?:var\/)?run\/(?:docker|podman)\.sock))/i,
+    pattern: /\b(?:docker|podman)\s+(?:run|create)\b(?=[^;&|\n]*(?:--privileged(?:=\S+)?|--(?:pid|network|net|userns|uts|ipc)(?:=|\s+)host\b|(?:-v(?:=|\s*)|--volume(?:=|\s+))\/?:(?:\/|\s)|--mount(?:=|\s+)[^;&|\n]*(?:source|src)=\/?(?:,|\s|$)|\/(?:var\/)?run\/(?:docker|podman)\.sock))/i,
     reason: "Privileged container access",
     description: "give a container broad access to the host computer",
   },
