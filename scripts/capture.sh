@@ -44,11 +44,11 @@ delayed_screenshot() {
   [[ -n $freeze_pid ]] && kill "$freeze_pid" 2>/dev/null || true
 
   for remaining in 5 4 3 2 1; do
-    if [[ -z $notification_id ]]; then
-      notification_id=$(omarchy-notification-send -p -t 900 \
+    if [[ ! $notification_id =~ ^[0-9]+$ ]]; then
+      notification_id=$(omarchy-notification-send -p -u normal -t 1500 \
         "Capturing in $remaining…" "Keep the selected area ready") || true
     else
-      omarchy-notification-send -r "$notification_id" -t 900 \
+      omarchy-notification-send -r "$notification_id" -u normal -t 1500 \
         "Capturing in $remaining…" "Keep the selected area ready" || true
     fi
     sleep 1

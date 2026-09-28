@@ -85,6 +85,7 @@ class InstallIntegrationTests(unittest.TestCase):
         config_file = self.config / "ask-omar/config.toml"
         guard_file = self.config / "ask-omar/guard.json"
         config_file.write_text("custom config\n")
+        # Obsolete guard files from older candidates are harmless user data.
         guard_file.write_text("custom guard\n")
         state_file = self.state / "ask-omar/notes.json"
         state_file.parent.mkdir(parents=True)
@@ -99,7 +100,6 @@ class InstallIntegrationTests(unittest.TestCase):
             (ROOT / "plugin/AskOmar.qml").read_bytes(),
         )
         self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
-        self.assertEqual(stat.S_IMODE(guard_file.stat().st_mode), 0o600)
         self.run_script("uninstall.sh")
         self.assertFalse(self.plugin.exists())
         self.assertFalse((self.data / "ask-omar").exists())

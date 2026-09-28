@@ -96,6 +96,7 @@ BarWidget {
   property string healthProvider: ""
   property string healthModel: ""
   property string healthThinking: ""
+  property string healthSystemAccess: "ask"
   property bool healthChecked: false
   property bool backendInstalled: true
   property string recapText: ""
@@ -120,12 +121,18 @@ BarWidget {
   property bool recordingActive: false
   property string recordingTarget: "assistant"
   property bool aiSettingsHelpExpanded: false
+  property string settingsSection: ""
   property var availableModels: []
   property var thinkingLevels: ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
   property string modelsMessage: ""
   property bool modelsLoading: false
   property bool agentSaving: false
   property string agentSaveMessage: ""
+  property bool accessSaving: false
+  property bool dangerousAccessPending: false
+  property string accessSaveMessage: ""
+  property int accessRevision: 0
+  property int healthAccessRevision: 0
   property bool restarting: false
   property bool quitting: false
   property bool quitRequested: false
@@ -233,6 +240,188 @@ BarWidget {
     }
   }
 
+  component SettingsSectionHeader: Rectangle {
+    id: sectionHeader
+
+    property string title: ""
+    property string summary: ""
+    property bool expanded: false
+    signal clicked()
+
+    implicitHeight: sectionHeaderText.implicitHeight + Style.space(18)
+    radius: Style.cornerRadius
+    color: sectionHeaderMouse.pressed
+      ? Style.pressedFillFor(root.foreground, root.accent)
+      : sectionHeaderMouse.containsMouse
+        ? Style.hoverFillFor(root.foreground, root.accent)
+        : "transparent"
+    border.color: expanded || activeFocus ? root.accent : Color.popups.border
+    border.width: Math.max(1, Style.space(1))
+    opacity: enabled ? 1 : 0.45
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
+    Accessible.name: title + ", " + summary + (expanded ? ", expanded" : ", collapsed")
+
+    Keys.onReturnPressed: if (enabled) clicked()
+    Keys.onEnterPressed: if (enabled) clicked()
+    Keys.onSpacePressed: if (enabled) clicked()
+
+    Column {
+      id: sectionHeaderText
+      anchors.left: parent.left
+      anchors.right: sectionChevron.left
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(2)
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: sectionHeader.title
+        color: root.foreground
+        elide: Text.ElideRight
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: sectionHeader.summary
+        color: Qt.darker(root.foreground, 1.35)
+        elide: Text.ElideRight
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+
+    Text {
+      id: sectionChevron
+      anchors.right: parent.right
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      text: sectionHeader.expanded ? "⌄" : "›"
+      color: sectionHeader.expanded ? root.accent : Qt.darker(root.foreground, 1.35)
+      font.family: root.bar ? root.bar.fontFamily : Style.font.family
+      font.pixelSize: Style.font.body
+      Accessible.ignored: true
+    }
+
+    MouseArea {
+      id: sectionHeaderMouse
+      anchors.fill: parent
+      enabled: sectionHeader.enabled
+      hoverEnabled: true
+      cursorShape: sectionHeader.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: {
+        sectionHeader.forceActiveFocus()
+        sectionHeader.clicked()
+      }
+    }
+  }
+
+  component AccessModeChoice: Rectangle {
+    id: accessChoice
+
+    property string mode: "ask"
+    property string title: ""
+    property string description: ""
+    property bool dangerous: false
+    readonly property bool selected: root.healthSystemAccess === mode
+    signal clicked()
+
+    implicitHeight: accessChoiceText.implicitHeight + Style.space(16)
+    radius: Style.cornerRadius
+    color: accessChoiceMouse.pressed
+      ? Style.pressedFillFor(root.foreground, root.accent)
+      : accessChoiceMouse.containsMouse || selected
+        ? Style.hoverFillFor(root.foreground, dangerous && selected ? root.accent : root.foreground)
+        : "transparent"
+    border.color: dangerous && selected
+      ? root.accent
+      : selected || activeFocus
+        ? root.foreground
+        : Color.popups.border
+    border.width: Math.max(1, Style.space(1))
+    opacity: enabled ? 1 : 0.45
+    activeFocusOnTab: true
+    Accessible.role: Accessible.RadioButton
+    Accessible.name: title + ". " + description
+    Accessible.checked: selected
+
+    Keys.onReturnPressed: if (enabled) clicked()
+    Keys.onEnterPressed: if (enabled) clicked()
+    Keys.onSpacePressed: if (enabled) clicked()
+
+    Rectangle {
+      id: radioOutline
+      anchors.left: parent.left
+      anchors.leftMargin: Style.space(10)
+      anchors.top: parent.top
+      anchors.topMargin: Style.space(11)
+      width: Style.space(12)
+      height: width
+      radius: width / 2
+      color: "transparent"
+      border.color: accessChoice.selected ? (accessChoice.dangerous ? root.accent : root.foreground) : Qt.darker(root.foreground, 1.35)
+      border.width: Math.max(1, Style.space(1))
+
+      Rectangle {
+        visible: accessChoice.selected
+        anchors.centerIn: parent
+        width: Math.max(Style.space(5), parent.width / 2)
+        height: width
+        radius: width / 2
+        color: accessChoice.dangerous ? root.accent : root.foreground
+      }
+    }
+
+    Column {
+      id: accessChoiceText
+      anchors.left: radioOutline.right
+      anchors.right: parent.right
+      anchors.leftMargin: Style.space(9)
+      anchors.rightMargin: Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(2)
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: accessChoice.title
+        color: accessChoice.dangerous && accessChoice.selected ? root.accent : root.foreground
+        wrapMode: Text.WordWrap
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        font.bold: true
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        width: parent.width
+        text: accessChoice.description
+        color: Qt.darker(root.foreground, 1.35)
+        wrapMode: Text.WordWrap
+        font.family: root.bar ? root.bar.fontFamily : Style.font.family
+        font.pixelSize: Style.font.bodySmall
+      }
+    }
+
+    MouseArea {
+      id: accessChoiceMouse
+      anchors.fill: parent
+      enabled: accessChoice.enabled
+      hoverEnabled: true
+      cursorShape: accessChoice.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+      onClicked: {
+        accessChoice.forceActiveFocus()
+        accessChoice.clicked()
+      }
+    }
+  }
+
   component MicButton: BorderSurface {
     id: micButton
 
@@ -311,6 +500,37 @@ BarWidget {
     for (var i = 0; i < selectedDisplayNames.length; i++)
       labels.push(displayLabelForName(selectedDisplayNames[i]))
     return "Shown on: " + (labels.length > 0 ? labels.join(", ") : "No displays")
+  }
+
+  function displaySummary() {
+    var labels = []
+    for (var i = 0; i < selectedDisplayNames.length; i++)
+      labels.push(displayLabelForName(selectedDisplayNames[i]))
+    return labels.length > 0 ? labels.join(", ") : "No displays"
+  }
+
+  function aiModelSummary() {
+    var values = []
+    if (healthModel !== "") values.push(healthModel)
+    if (healthProvider !== "") values.push(healthProvider)
+    if (healthThinking !== "") values.push("reasoning " + healthThinking)
+    return values.length > 0 ? values.join(" · ") : "Choose a model and reasoning level"
+  }
+
+  function safetySummary() {
+    var label = systemAccessLabel()
+    if (healthSystemAccess === "ask") return label + " · recommended"
+    if (healthSystemAccess === "unrestricted") return label + " · dangerous"
+    return label
+  }
+
+  function toggleSettingsSection(section) {
+    settingsSection = settingsSection === section ? "" : section
+    aiSettingsHelpExpanded = settingsSection === "ai"
+    dangerousAccessPending = false
+    accessSaveMessage = ""
+    if (settingsSection === "answers") loadHistory()
+    if (settingsSection === "ai") loadModels()
   }
 
   function updateGeometry() {
@@ -574,6 +794,10 @@ BarWidget {
 
   function toggleSettings() {
     settingsExpanded = !settingsExpanded
+    settingsSection = ""
+    aiSettingsHelpExpanded = false
+    dangerousAccessPending = false
+    accessSaveMessage = ""
     panelView = "chat"
     historyPreview = null
     historyItemResponse = ""
@@ -584,6 +808,7 @@ BarWidget {
     if (settingsExpanded) {
       checkHealth()
       loadModels()
+      Qt.callLater(function() { historyButton.forceActiveFocus() })
     }
   }
 
@@ -625,6 +850,8 @@ BarWidget {
     replyExpanded = false
     screenshotMenuExpanded = false
     aiSettingsHelpExpanded = false
+    dangerousAccessPending = false
+    accessSaveMessage = ""
     hideFromBarPending = false
   }
 
@@ -1199,6 +1426,7 @@ BarWidget {
     if (healthProcess.running) return
     healthStatus = "checking"
     healthChecked = true
+    healthAccessRevision = accessRevision
     healthProcess.command = ["ask-omar", "health"]
     healthProcess.running = true
   }
@@ -1277,6 +1505,57 @@ BarWidget {
     }
   }
 
+  function saveSystemAccess(mode) {
+    if (accessSaving || setAccessProcess.running) return
+    dangerousAccessPending = false
+    accessRevision += 1
+    accessSaving = true
+    accessSaveMessage = "Saving…"
+    setAccessProcess.command = ["ask-omar", "set-access", mode]
+    setAccessProcess.running = true
+  }
+
+  function selectSystemAccess(mode) {
+    if (accessSaving || setAccessProcess.running) return
+    if (mode === healthSystemAccess) {
+      dangerousAccessPending = false
+      accessSaveMessage = ""
+      return
+    }
+    if (mode === "unrestricted") {
+      dangerousAccessPending = true
+      accessSaveMessage = "Omar will run every shell command without asking, including destructive commands."
+      return
+    }
+    saveSystemAccess(mode)
+  }
+
+  function confirmDangerousAccess() {
+    if (!dangerousAccessPending) return
+    saveSystemAccess("unrestricted")
+  }
+
+  function cancelDangerousAccess() {
+    dangerousAccessPending = false
+    accessSaveMessage = ""
+  }
+
+  function handleSetAccess(raw) {
+    accessSaving = false
+    try {
+      var result = JSON.parse(String(raw || "").trim())
+      if (!result.ok) {
+        accessSaveMessage = String(result.error || "Could not save system access.")
+        return
+      }
+      accessRevision += 1
+      healthSystemAccess = String(result.system_access || "ask")
+      accessSaveMessage = String(result.message || "System access updated.")
+    } catch (error) {
+      accessSaveMessage = "Could not read the system access response."
+    }
+  }
+
   function handleHealth(raw) {
     healthChecked = true
     try {
@@ -1292,6 +1571,9 @@ BarWidget {
       healthProvider = String(result.provider || "")
       healthModel = String(result.model || "")
       healthThinking = String(result.thinking || "")
+      if (healthAccessRevision === accessRevision) {
+        healthSystemAccess = String(result.system_access || "ask")
+      }
     } catch (error) {
       healthStatus = "error"
       healthMessage = "Ask Omar couldn't read the AI connection check."
@@ -1300,6 +1582,13 @@ BarWidget {
 
   function aiUnavailable() {
     return healthChecked && healthStatus !== "ready" && healthStatus !== "checking"
+  }
+
+  function systemAccessLabel() {
+    if (healthSystemAccess === "off") return "Block Commands"
+    if (healthSystemAccess === "full") return "Ask for Recognized Risks"
+    if (healthSystemAccess === "unrestricted") return "Always Allow — Dangerous"
+    return "Ask First"
   }
 
   function healthTitle() {
@@ -1906,6 +2195,15 @@ BarWidget {
     stderr: StdioCollector { waitForEnd: true }
   }
 
+  Process {
+    id: setAccessProcess
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.handleSetAccess(text)
+    }
+    stderr: StdioCollector { waitForEnd: true }
+  }
+
   Process { id: captureLauncher }
 
   Process {
@@ -1942,6 +2240,7 @@ BarWidget {
         root.settingsExpanded = true
         root.checkHealth()
         root.loadModels()
+        Qt.callLater(function() { historyButton.forceActiveFocus() })
       }
       else if (showHistory) root.showHistory()
     }
@@ -2441,11 +2740,13 @@ BarWidget {
               size: Style.space(28)
               focusable: true
               bordered: true
-              foreground: root.foreground
-              hoverColor: root.settingsExpanded ? root.accent : root.foreground
+              foreground: root.healthSystemAccess === "unrestricted" ? root.accent : root.foreground
+              hoverColor: root.settingsExpanded ? root.accent : foreground
               fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
               fontSize: Style.font.icon
-              tooltipText: root.settingsExpanded ? "Close settings" : "Configure Ask Omar"
+              tooltipText: root.settingsExpanded
+                ? "Close settings"
+                : "Configure Ask Omar · Shell access: " + root.systemAccessLabel()
               Accessible.name: tooltipText
               onClicked: root.toggleSettings()
             }
@@ -2569,286 +2870,498 @@ BarWidget {
             width: parent.width
             spacing: Style.space(10)
 
-            Button {
-              id: historyButton
-              text: "Past answers"
-              focusable: true
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              tooltipText: "Questions and answers saved on this machine"
-              Accessible.name: tooltipText
-              enabled: !root.busy
-              onClicked: root.openAnswersList(true)
-            }
-
-            Text {
-              textFormat: Text.PlainText
+            Rectangle {
               width: parent.width
-              text: "AI connection"
-              color: root.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.body
-              font.bold: true
-              Accessible.name: text
-            }
+              height: aiConnectionRow.implicitHeight + Style.space(16)
+              color: "transparent"
+              border.color: Color.popups.border
+              border.width: Math.max(1, Style.space(1))
+              radius: Style.cornerRadius
 
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: root.healthTitle()
-                + (root.healthProvider !== "" ? " · " + root.healthProvider : "")
-                + (root.healthModel !== "" ? " · " + root.healthModel : "")
-                + (root.healthThinking !== "" ? " · reasoning " + root.healthThinking : "")
-              wrapMode: Text.WordWrap
-              color: root.healthStatus === "ready" ? root.foreground : root.accent
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
-            }
+              Row {
+                id: aiConnectionRow
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.leftMargin: Style.space(10)
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(8)
 
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: root.healthLabel()
-              wrapMode: Text.WordWrap
-              color: Qt.darker(root.foreground, 1.35)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
-            }
+                Rectangle {
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Style.space(7)
+                  height: width
+                  radius: width / 2
+                  color: root.healthStatus === "ready" ? root.foreground : root.accent
+                }
 
-            Button {
-              text: root.aiSettingsHelpExpanded ? "Hide model and reasoning" : "Change model or reasoning…"
-              focusable: true
-              bordered: false
-              foreground: root.foreground
-              accent: root.accent
-              tooltipText: "Choose Ask Omar's Pi model and reasoning level"
-              enabled: !root.agentSaving
-              onClicked: {
-                root.aiSettingsHelpExpanded = !root.aiSettingsHelpExpanded
-                if (root.aiSettingsHelpExpanded) root.loadModels()
-              }
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: root.aiSettingsHelpExpanded
-              width: parent.width
-              text: root.modelsLoading
-                ? "Loading models from Pi…"
-                : (root.modelsMessage !== ""
-                  ? root.modelsMessage
-                  : "Pick a model and reasoning level. Changes apply to the next request.")
-              wrapMode: Text.WordWrap
-              color: Qt.darker(root.foreground, 1.35)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: root.aiSettingsHelpExpanded
-              width: parent.width
-              text: "Model"
-              color: root.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              font.bold: true
-              Accessible.name: text
-            }
-
-            Repeater {
-              model: root.aiSettingsHelpExpanded ? root.availableModels : []
-              delegate: Button {
-                required property var modelData
-                readonly property string optionProvider: String(modelData.provider || "")
-                readonly property string optionModel: String(modelData.model || "")
-                readonly property bool selected: optionProvider === root.healthProvider && optionModel === root.healthModel
-                width: parent.width
-                text: (selected ? "󰄬  " : "     ") + optionModel + (optionProvider !== "" ? " · " + optionProvider : "")
-                focusable: true
-                bordered: true
-                foreground: root.foreground
-                accent: root.accent
-                enabled: !root.agentSaving && !root.modelsLoading
-                tooltipText: selected ? "Current model" : "Use " + optionModel
-                Accessible.name: (selected ? "Selected model " : "Choose model ") + optionModel
-                onClicked: root.selectModel(optionProvider, optionModel)
-              }
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: root.aiSettingsHelpExpanded && root.availableModels.length === 0 && !root.modelsLoading
-              width: parent.width
-              text: "Current model: " + (root.healthModel !== "" ? root.healthModel : "unset")
-                + (root.healthProvider !== "" ? " · " + root.healthProvider : "")
-              wrapMode: Text.WordWrap
-              color: Qt.darker(root.foreground, 1.35)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: root.aiSettingsHelpExpanded
-              width: parent.width
-              text: "Reasoning"
-              color: root.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              font.bold: true
-              Accessible.name: text
-            }
-
-            Flow {
-              visible: root.aiSettingsHelpExpanded
-              width: parent.width
-              spacing: Style.space(6)
-
-              Repeater {
-                model: root.thinkingLevels
-                delegate: Button {
-                  required property string modelData
-                  readonly property bool selected: String(modelData) === root.healthThinking
-                  text: (selected ? "󰄬 " : "") + modelData
-                  focusable: true
-                  bordered: true
-                  foreground: root.foreground
-                  accent: root.accent
-                  enabled: !root.agentSaving
-                  tooltipText: selected ? "Current reasoning" : "Use reasoning " + modelData
-                  Accessible.name: (selected ? "Selected reasoning " : "Choose reasoning ") + modelData
-                  onClicked: root.selectThinking(modelData)
+                Text {
+                  textFormat: Text.PlainText
+                  width: Math.max(0, parent.width - Style.space(15))
+                  text: root.healthTitle()
+                  color: root.healthStatus === "ready" ? root.foreground : root.accent
+                  elide: Text.ElideRight
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                  Accessible.name: text
                 }
               }
             }
 
-            Text {
-              textFormat: Text.PlainText
-              visible: root.aiSettingsHelpExpanded && root.agentSaveMessage !== ""
+            SettingsSectionHeader {
+              id: historyButton
               width: parent.width
-              text: root.agentSaveMessage
-              wrapMode: Text.WordWrap
-              color: Qt.darker(root.foreground, 1.35)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
+              title: "Past answers"
+              summary: root.historyEntries.length > 0
+                ? root.historyEntries.length + " saved privately on this computer"
+                : "Saved privately on this computer"
+              expanded: root.settingsSection === "answers"
+              enabled: !root.busy
+              onClicked: root.toggleSettingsSection("answers")
             }
 
-            Button {
-              visible: root.aiSettingsHelpExpanded
-              text: root.restarting ? "Restarting…" : "Restart Ask Omar"
-              enabled: !root.restarting
-              focusable: true
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              tooltipText: "Restart the AI service if a setting change did not take effect"
-              onClicked: root.restartApplication()
-            }
+            Column {
+              visible: root.settingsSection === "answers"
+              width: parent.width
+              spacing: Style.space(7)
 
-            Button {
-              text: healthProcess.running ? "Checking…" : "Check again"
-              enabled: !healthProcess.running
-              focusable: true
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              onClicked: {
-                root.checkHealth()
-                if (root.aiSettingsHelpExpanded) root.loadModels()
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: historyProcess.running
+                  ? "Loading past answers…"
+                  : root.historyEntries.length > 0
+                    ? "Questions and answers saved on this machine."
+                    : "No past answers yet."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
               }
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: "Safety"
-              color: root.foreground
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.body
-              font.bold: true
-              Accessible.name: text
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: "Omar works directly on this computer. There is no sandbox separating it from your files. The guard stops or asks about some known risky commands, but it cannot recognise every dangerous command."
-              wrapMode: Text.WordWrap
-              color: Qt.darker(root.foreground, 1.35)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
-            }
-
-            Button {
-              text: setting("openOnStartup", false) ? "Open at login: On" : "Open at login: Off"
-              focusable: true
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              onClicked: root.updateSetting("openOnStartup", !setting("openOnStartup", false))
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              width: parent.width
-              text: root.shownOnSummary()
-              wrapMode: Text.WordWrap
-              color: Qt.darker(root.foreground, 1.35)
-              font.family: root.bar ? root.bar.fontFamily : Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              Accessible.name: text
-            }
-
-            Repeater {
-              model: root.availableScreens
 
               Button {
-                required property var modelData
-                readonly property bool selected: root.selectedDisplayNames.indexOf(String(modelData.name)) !== -1
-                width: contentColumn.width
-                text: (selected ? "󰄬  " : "     ") + root.displayLabel(modelData)
-                leftAlign: true
+                text: "Open past answers"
                 focusable: true
                 bordered: true
-                enabled: !selected || root.selectedDisplayNames.length > 1
                 foreground: root.foreground
                 accent: root.accent
-                fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
-                tooltipText: selected && root.selectedDisplayNames.length === 1
-                  ? "Ask Omar must remain on at least one display"
-                  : (selected ? "Hide Ask Omar on this display" : "Show Ask Omar on this display")
-                Accessible.name: (selected ? "Shown on " : "Not shown on ") + root.displayLabel(modelData)
-                Keys.onEscapePressed: root.close()
-                onClicked: root.toggleDisplay(modelData.name)
+                enabled: !historyProcess.running
+                onClicked: root.openAnswersList(true)
               }
             }
 
-            Button {
-              text: "Quit Ask Omar"
-              focusable: true
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              tooltipText: "Close Ask Omar and stop its AI service until you open it again"
-              onClicked: root.quitApplication()
+            SettingsSectionHeader {
+              width: parent.width
+              title: "AI model"
+              summary: root.aiModelSummary()
+              expanded: root.settingsSection === "ai"
+              onClicked: root.toggleSettingsSection("ai")
             }
 
-            Button {
-              text: root.hideFromBarPending ? "Confirm hide from menu bar" : "Hide from menu bar"
-              focusable: true
-              bordered: true
-              foreground: root.foreground
-              accent: root.accent
-              tooltipText: "Stop Ask Omar and remove it from the menu bar; reopen it later from Apps"
-              onClicked: root.hideFromBar()
+            Column {
+              visible: root.settingsSection === "ai"
+              width: parent.width
+              spacing: Style.space(7)
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: root.modelsLoading
+                  ? "Loading models from Pi…"
+                  : (root.modelsMessage !== ""
+                    ? root.modelsMessage
+                    : "Choose Ask Omar’s Pi model and reasoning level. Changes apply to the next request.")
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Model"
+                color: root.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                Accessible.name: text
+              }
+
+              Repeater {
+                model: root.availableModels
+                delegate: Button {
+                  required property var modelData
+                  readonly property string optionProvider: String(modelData.provider || "")
+                  readonly property string optionModel: String(modelData.model || "")
+                  readonly property bool selected: optionProvider === root.healthProvider && optionModel === root.healthModel
+                  width: parent.width
+                  text: (selected ? "󰄬  " : "     ") + optionModel + (optionProvider !== "" ? " · " + optionProvider : "")
+                  focusable: true
+                  bordered: true
+                  foreground: root.foreground
+                  accent: root.accent
+                  enabled: !root.agentSaving && !root.modelsLoading
+                  tooltipText: selected ? "Current model" : "Use " + optionModel
+                  Accessible.name: (selected ? "Selected model " : "Choose model ") + optionModel
+                  onClicked: root.selectModel(optionProvider, optionModel)
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                visible: root.availableModels.length === 0 && !root.modelsLoading
+                width: parent.width
+                text: "Current model: " + (root.healthModel !== "" ? root.healthModel : "unset")
+                  + (root.healthProvider !== "" ? " · " + root.healthProvider : "")
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Reasoning"
+                color: root.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                Accessible.name: text
+              }
+
+              Flow {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Repeater {
+                  model: root.thinkingLevels
+                  delegate: Button {
+                    required property string modelData
+                    readonly property bool selected: String(modelData) === root.healthThinking
+                    text: (selected ? "󰄬 " : "") + modelData
+                    focusable: true
+                    bordered: true
+                    foreground: root.foreground
+                    accent: root.accent
+                    enabled: !root.agentSaving
+                    tooltipText: selected ? "Current reasoning" : "Use reasoning " + modelData
+                    Accessible.name: (selected ? "Selected reasoning " : "Choose reasoning ") + modelData
+                    onClicked: root.selectThinking(modelData)
+                  }
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                visible: root.agentSaveMessage !== ""
+                width: parent.width
+                text: root.agentSaveMessage
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Flow {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Button {
+                  text: healthProcess.running ? "Checking…" : "Check connection"
+                  enabled: !healthProcess.running
+                  focusable: true
+                  bordered: true
+                  foreground: root.foreground
+                  accent: root.accent
+                  onClicked: {
+                    root.checkHealth()
+                    root.loadModels()
+                  }
+                }
+
+                Button {
+                  text: root.restarting ? "Restarting…" : "Restart Ask Omar"
+                  enabled: !root.restarting
+                  focusable: true
+                  bordered: true
+                  foreground: root.foreground
+                  accent: root.accent
+                  tooltipText: "Restart the AI service if a setting change did not take effect"
+                  onClicked: root.restartApplication()
+                }
+              }
+            }
+
+            SettingsSectionHeader {
+              width: parent.width
+              title: "Safety"
+              summary: root.safetySummary()
+              expanded: root.settingsSection === "safety"
+              onClicked: root.toggleSettingsSection("safety")
+            }
+
+            Column {
+              visible: root.settingsSection === "safety"
+              width: parent.width
+              spacing: Style.space(7)
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Shell commands run with your permissions. They are not sandboxed. Ask First is recommended."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              AccessModeChoice {
+                width: parent.width
+                mode: "ask"
+                title: "Ask First"
+                description: "Ask before each command, or allow most commands for 15 minutes."
+                enabled: !root.accessSaving
+                onClicked: root.selectSystemAccess(mode)
+              }
+
+              AccessModeChoice {
+                width: parent.width
+                mode: "full"
+                title: "Ask for Recognized Risks"
+                description: "Most commands run automatically. Omar asks about risks it recognizes."
+                enabled: !root.accessSaving
+                onClicked: root.selectSystemAccess(mode)
+              }
+
+              AccessModeChoice {
+                width: parent.width
+                mode: "unrestricted"
+                title: "Always Allow — Dangerous"
+                description: "Run every shell command without asking, including destructive commands."
+                dangerous: true
+                enabled: !root.accessSaving
+                onClicked: root.selectSystemAccess(mode)
+              }
+
+              Rectangle {
+                visible: root.dangerousAccessPending
+                width: parent.width
+                height: visible ? dangerousConfirmColumn.implicitHeight + Style.space(16) : 0
+                color: Style.hoverFillFor(root.accent, root.accent)
+                border.color: root.accent
+                border.width: Math.max(1, Style.space(1))
+                radius: Style.cornerRadius
+
+                Column {
+                  id: dangerousConfirmColumn
+                  anchors.fill: parent
+                  anchors.margins: Style.space(8)
+                  spacing: Style.space(7)
+
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    text: "Enable Always Allow?"
+                    color: root.accent
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: true
+                    Accessible.name: text
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    width: parent.width
+                    text: root.accessSaveMessage
+                    wrapMode: Text.WordWrap
+                    color: root.foreground
+                    font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                    font.pixelSize: Style.font.bodySmall
+                    Accessible.name: text
+                  }
+
+                  Flow {
+                    width: parent.width
+                    spacing: Style.space(6)
+
+                    Button {
+                      text: "Cancel"
+                      focusable: true
+                      bordered: true
+                      foreground: root.foreground
+                      accent: root.accent
+                      onClicked: root.cancelDangerousAccess()
+                    }
+
+                    Button {
+                      text: "Enable Always Allow"
+                      focusable: true
+                      bordered: true
+                      foreground: root.accent
+                      accent: root.accent
+                      onClicked: root.confirmDangerousAccess()
+                    }
+                  }
+                }
+              }
+
+              AccessModeChoice {
+                width: parent.width
+                mode: "off"
+                title: "Block Commands"
+                description: "Turn Omar’s shell access off."
+                enabled: !root.accessSaving
+                onClicked: root.selectSystemAccess(mode)
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                visible: root.accessSaveMessage !== "" && !root.dangerousAccessPending
+                width: parent.width
+                text: root.accessSaveMessage
+                wrapMode: Text.WordWrap
+                color: root.healthSystemAccess === "unrestricted"
+                  ? root.accent
+                  : Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+            }
+
+            SettingsSectionHeader {
+              width: parent.width
+              title: "Display"
+              summary: root.displaySummary()
+              expanded: root.settingsSection === "display"
+              onClicked: root.toggleSettingsSection("display")
+            }
+
+            Column {
+              visible: root.settingsSection === "display"
+              width: parent.width
+              spacing: Style.space(7)
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Choose where Ask Omar appears."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Repeater {
+                model: root.availableScreens
+
+                Button {
+                  required property var modelData
+                  readonly property bool selected: root.selectedDisplayNames.indexOf(String(modelData.name)) !== -1
+                  width: parent.width
+                  text: (selected ? "󰄬  " : "     ") + root.displayLabel(modelData)
+                  leftAlign: true
+                  focusable: true
+                  bordered: true
+                  enabled: !selected || root.selectedDisplayNames.length > 1
+                  foreground: root.foreground
+                  accent: root.accent
+                  fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+                  tooltipText: selected && root.selectedDisplayNames.length === 1
+                    ? "Ask Omar must remain on at least one display"
+                    : (selected ? "Hide Ask Omar on this display" : "Show Ask Omar on this display")
+                  Accessible.name: (selected ? "Shown on " : "Not shown on ") + root.displayLabel(modelData)
+                  Keys.onEscapePressed: root.close()
+                  onClicked: root.toggleDisplay(modelData.name)
+                }
+              }
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Column {
+                width: Math.max(0, parent.width - openAtLoginButton.implicitWidth - parent.spacing)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(2)
+
+                Text {
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  text: "Open at login"
+                  color: root.foreground
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: true
+                  Accessible.name: text
+                }
+
+                Text {
+                  textFormat: Text.PlainText
+                  width: parent.width
+                  text: "Start Ask Omar when you sign in"
+                  color: Qt.darker(root.foreground, 1.35)
+                  elide: Text.ElideRight
+                  font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                  font.pixelSize: Style.font.bodySmall
+                  Accessible.name: text
+                }
+              }
+
+              Button {
+                id: openAtLoginButton
+                text: setting("openOnStartup", false) ? "On" : "Off"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                Accessible.name: "Open at login: " + text
+                onClicked: root.updateSetting("openOnStartup", !setting("openOnStartup", false))
+              }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              width: parent.width
+              text: "Application"
+              color: Qt.darker(root.foreground, 1.35)
+              font.family: root.bar ? root.bar.fontFamily : Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              Accessible.name: text
+            }
+
+            Flow {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Button {
+                text: root.hideFromBarPending ? "Confirm hide from menu bar" : "Hide from menu bar"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                tooltipText: "Stop Ask Omar and remove it from the menu bar; reopen it later from Apps"
+                onClicked: root.hideFromBar()
+              }
+
+              Button {
+                text: "Quit Ask Omar"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                tooltipText: "Close Ask Omar and stop its AI service until you open it again"
+                onClicked: root.quitApplication()
+              }
             }
           }
 
@@ -2924,7 +3437,7 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Omar works directly on this computer"
+                text: "Omar can run commands on this computer"
                 color: root.foreground
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.body
@@ -2935,7 +3448,40 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Omar works directly on this computer. There is no sandbox separating it from your files. The guard stops or asks about some known risky commands, but it cannot recognise every dangerous command."
+                text: "Commands run with your permissions and are not sandboxed."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Ask First is recommended"
+                color: root.foreground
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Approve one command, or allow commands for the next 15 minutes."
+                wrapMode: Text.WordWrap
+                color: Qt.darker(root.foreground, 1.35)
+                font.family: root.bar ? root.bar.fontFamily : Style.font.family
+                font.pixelSize: Style.font.bodySmall
+                Accessible.name: text
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                width: parent.width
+                text: "Want fewer prompts? Choose a different mode in Settings → Safety."
                 wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.35)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3296,7 +3842,7 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Allow this command?"
+                text: "Review shell command"
                 color: root.accent
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -3345,7 +3891,8 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "On this computer · Allow once"
+                text: "Allow once runs only this command. Allow for 15 minutes covers routine commands in your next requests; high-risk commands still ask."
+                wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.5)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
                 font.pixelSize: Style.font.bodySmall
@@ -3378,8 +3925,21 @@ BarWidget {
                   fontSize: Style.font.bodySmall
                   Accessible.name: "Allow the command once"
                   Keys.onEscapePressed: root.respondToConfirmation("Deny")
-                  onClicked: root.respondToConfirmation("Allow")
+                  onClicked: root.respondToConfirmation("Allow once")
                 }
+              }
+
+              Button {
+                text: "Allow for 15 minutes"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
+                fontSize: Style.font.bodySmall
+                Accessible.name: "Allow shell commands for 15 minutes"
+                Keys.onEscapePressed: root.respondToConfirmation("Deny")
+                onClicked: root.respondToConfirmation("Allow for 15 minutes")
               }
             }
           }

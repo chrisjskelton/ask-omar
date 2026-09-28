@@ -88,6 +88,76 @@ class QmlBehaviorTests(unittest.TestCase):
         self.assertNotIn("TextEdit.MarkdownText", QML)
         self.assertIn("textFormat: TextEdit.PlainText", QML)
 
+    def test_unrestricted_access_requires_a_separate_confirmation(self):
+        script = "\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const context = {accessSaving:false, dangerousAccessPending:false, accessSaveMessage:"",',
+            '  accessRevision:0, healthSystemAccess:"ask", setAccessProcess:{running:false,command:[]}};',
+            'vm.createContext(context);', functions("saveSystemAccess", "selectSystemAccess", "confirmDangerousAccess"),
+            'vm.runInContext(`selectSystemAccess("unrestricted")`, context);',
+            'assert.equal(context.dangerousAccessPending, true);',
+            'assert.equal(context.setAccessProcess.running, false);',
+            'assert.match(context.accessSaveMessage, /every shell command without asking/);',
+            'vm.runInContext(`selectSystemAccess("unrestricted")`, context);',
+            'assert.equal(context.dangerousAccessPending, true);',
+            'assert.equal(context.setAccessProcess.running, false);',
+            'vm.runInContext(`confirmDangerousAccess()`, context);',
+            'assert.equal(context.dangerousAccessPending, false);',
+            'assert.equal(context.setAccessProcess.running, true);',
+            'assert.deepEqual(Array.from(context.setAccessProcess.command),',
+            '  ["ask-omar", "set-access", "unrestricted"]);',
+        ))
+        run_node(script)
+
+    def test_stale_health_cannot_overwrite_saved_access_mode(self):
+        script = "\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const context = {accessSaving:false, dangerousAccessPending:false, accessSaveMessage:"",',
+            '  accessRevision:0, healthAccessRevision:0, healthSystemAccess:"ask",',
+            '  healthChecked:false, healthStatus:"", healthMessage:"", healthProvider:"",',
+            '  healthModel:"", healthThinking:"", healthProcess:{running:false,command:[]},',
+            '  setAccessProcess:{running:false,command:[]}};',
+            'vm.createContext(context);',
+            functions("checkHealth", "saveSystemAccess", "handleSetAccess", "handleHealth"),
+            'vm.runInContext(`checkHealth()`, context);',
+            'assert.equal(context.healthAccessRevision, 0);',
+            'context.healthProcess.running = false;',
+            'vm.runInContext(`saveSystemAccess("unrestricted")`, context);',
+            'assert.equal(context.accessRevision, 1);',
+            'context.setAccessProcess.running = false;',
+            'vm.runInContext(`handleSetAccess(JSON.stringify({ok:true,system_access:"unrestricted"}))`, context);',
+            'assert.equal(context.accessRevision, 2);',
+            'assert.equal(context.healthSystemAccess, "unrestricted");',
+            'vm.runInContext(`handleHealth(JSON.stringify({ok:true,system_access:"ask",agent:{status:"ready"}}))`, context);',
+            'assert.equal(context.healthSystemAccess, "unrestricted");',
+        ))
+        run_node(script)
+
+    def test_health_started_during_access_save_is_stale(self):
+        script = "\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const context = {accessSaving:false, dangerousAccessPending:false, accessSaveMessage:"",',
+            '  accessRevision:0, healthAccessRevision:0, healthSystemAccess:"ask",',
+            '  healthChecked:false, healthStatus:"", healthMessage:"", healthProvider:"",',
+            '  healthModel:"", healthThinking:"", healthProcess:{running:false,command:[]},',
+            '  setAccessProcess:{running:false,command:[]}};',
+            'vm.createContext(context);',
+            functions("checkHealth", "saveSystemAccess", "selectSystemAccess", "handleSetAccess", "handleHealth"),
+            'vm.runInContext(`saveSystemAccess("unrestricted")`, context);',
+            'context.healthProcess.running = false;',
+            'vm.runInContext(`checkHealth()`, context);',
+            'assert.equal(context.healthAccessRevision, 1);',
+            'context.setAccessProcess.running = false;',
+            'vm.runInContext(`handleSetAccess(JSON.stringify({ok:true,system_access:"unrestricted"}))`, context);',
+            'assert.equal(context.accessRevision, 2);',
+            'vm.runInContext(`handleHealth(JSON.stringify({ok:true,system_access:"ask",agent:{status:"ready"}}))`, context);',
+            'assert.equal(context.healthSystemAccess, "unrestricted");',
+            'vm.runInContext(`selectSystemAccess("ask")`, context);',
+            'assert.equal(context.setAccessProcess.running, true);',
+            'assert.deepEqual(Array.from(context.setAccessProcess.command), ["ask-omar", "set-access", "ask"]);',
+        ))
+        run_node(script)
+
     def test_oversized_question_keeps_both_composers(self):
         script = "\n".join((
             'const vm = require("node:vm"); const assert = require("node:assert/strict");',

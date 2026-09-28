@@ -13,7 +13,7 @@ class VersionTests(unittest.TestCase):
         manifest = json.loads(
             (Path(__file__).parents[1] / "manifest.json").read_text()
         )
-        self.assertEqual(__version__, "0.1.0")
+        self.assertEqual(__version__, "0.1.1")
         self.assertEqual(manifest["version"], __version__)
 
         output = io.StringIO()
