@@ -9,6 +9,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
+REVIEWED_COMMIT = "4c5e83375dcc2be4e0fdb7e040f03f4d30e277cc"
 COMMANDS = (
     "systemctl",
     "omarchy",
@@ -71,6 +72,39 @@ class InstallIntegrationTests(unittest.TestCase):
     def calls(self):
         return self.log.read_text(encoding="utf-8") if self.log.exists() else ""
 
+    def make_checkout(self, destination):
+        shutil.copytree(ROOT, destination, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        subprocess.run(["git", "init", "-q"], cwd=destination, check=True)
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.invalid"],
+            cwd=destination,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"], cwd=destination, check=True
+        )
+        subprocess.run(["git", "add", "."], cwd=destination, check=True)
+        subprocess.run(
+            ["git", "commit", "-qm", "fixture"], cwd=destination, check=True
+        )
+
+    def home_snapshot(self):
+        snapshot = {}
+        for path in sorted(self.home.rglob("*")):
+            relative = str(path.relative_to(self.home))
+            if path.is_symlink():
+                snapshot[relative] = ("symlink", os.readlink(path))
+            elif path.is_file():
+                snapshot[relative] = ("file", path.read_bytes())
+            else:
+                snapshot[relative] = ("directory",)
+        return snapshot
+
+    def reset_home(self):
+        shutil.rmtree(self.home)
+        self.home.mkdir()
+        self.log.unlink(missing_ok=True)
+
     def test_full_install_update_and_uninstall_preserve_user_data(self):
         self.run_script("install.sh")
         manifest = json.loads((self.plugin / "manifest.json").read_text())
@@ -109,7 +143,7 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertIn("omarchy plugin disable ask-omar.assistant", self.calls())
 
     def test_marketplace_backend_setup_does_not_copy_plugin_into_itself(self):
-        shutil.copytree(ROOT, self.plugin, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        self.make_checkout(self.plugin)
         original = (self.plugin / "plugin/AskOmar.qml").read_bytes()
         self.run_script("install.sh", "--backend-only", root=self.plugin)
         self.assertEqual((self.plugin / "plugin/AskOmar.qml").read_bytes(), original)
@@ -121,7 +155,7 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertNotIn("omarchy plugin disable", self.calls())
 
     def test_full_install_from_already_installed_marketplace_source(self):
-        shutil.copytree(ROOT, self.plugin, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        self.make_checkout(self.plugin)
         self.run_script("install.sh", root=self.plugin)
         self.assertTrue((self.plugin / "manifest.json").is_file())
         self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
@@ -153,6 +187,180 @@ class InstallIntegrationTests(unittest.TestCase):
         result = self.run_script("install.sh", "--backend-only")
         self.assertIn("Pi supports Ask Omar's required flags", result.stdout)
         self.assertIn("pi --help offline=1", self.calls())
+
+    def test_destination_symlinks_are_refused_before_any_target_changes(self):
+        cases = (
+            ("app", self.data / "ask-omar", "directory", "--backend-only"),
+            ("service directory", self.data / "ask-omar/service", "directory", "--backend-only"),
+            ("package", self.data / "ask-omar/service/ask_omar", "directory", "--backend-only"),
+            ("extensions", self.data / "ask-omar/extensions", "directory", "--backend-only"),
+            ("guard", self.data / "ask-omar/extensions/ask-omar-guard.ts", "file", "--backend-only"),
+            ("unit", self.config / "systemd/user/ask-omar.service", "file", "--backend-only"),
+            ("cli", self.home / ".local/bin/ask-omar", "file", "--backend-only"),
+            ("open launcher", self.home / ".local/bin/ask-omar-open", "file", "--backend-only"),
+            ("capture launcher", self.home / ".local/bin/ask-omar-capture", "file", "--backend-only"),
+            ("desktop", self.data / "applications/ask-omar.desktop", "file", "--backend-only"),
+            ("settings desktop", self.data / "applications/ask-omar-settings.desktop", "file", "--backend-only"),
+            ("plugin", self.plugin, "directory", None),
+            ("plugin directory", self.plugin / "plugin", "directory", None),
+            ("plugin manifest", self.plugin / "manifest.json", "file", None),
+            ("plugin qml", self.plugin / "plugin/AskOmar.qml", "file", None),
+            ("old plugin qml", self.plugin / "AskOmar.qml", "file", None),
+            ("old plugin manifest", self.plugin / "plugin/manifest.json", "file", None),
+        )
+        sentinels = Path(self.sandbox.name) / "sentinels"
+        for name, destination, target_kind, mode in cases:
+            with self.subTest(destination=name):
+                self.reset_home()
+                sentinel = sentinels / name.replace(" ", "-")
+                if target_kind == "directory":
+                    sentinel.mkdir(parents=True, exist_ok=True)
+                    marker = sentinel / "keep"
+                    marker.write_text("unchanged\n")
+                else:
+                    sentinel.parent.mkdir(parents=True, exist_ok=True)
+                    sentinel.write_text("unchanged\n")
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.symlink_to(sentinel, target_is_directory=target_kind == "directory")
+                before = self.home_snapshot()
+
+                args = (mode,) if mode else ()
+                result = self.run_script("install.sh", *args, success=False)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("symlink", result.stderr)
+                if target_kind == "directory":
+                    self.assertEqual(marker.read_text(), "unchanged\n")
+                else:
+                    self.assertEqual(sentinel.read_text(), "unchanged\n")
+                self.assertEqual(self.home_snapshot(), before)
+
+    def test_symlinked_application_target_remains_empty(self):
+        target = Path(self.sandbox.name) / "empty-target"
+        target.mkdir()
+        self.data.mkdir(parents=True)
+        (self.data / "ask-omar").symlink_to(target, target_is_directory=True)
+
+        self.run_script("install.sh", "--backend-only", success=False)
+
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_marketplace_symlink_to_checkout_is_allowed(self):
+        self.plugin.parent.mkdir(parents=True)
+        self.plugin.symlink_to(ROOT, target_is_directory=True)
+
+        self.run_script("install.sh")
+
+        self.assertTrue(self.plugin.is_symlink())
+        self.assertIn("omarchy plugin enable ask-omar.assistant", self.calls())
+
+    def test_uninstall_preserves_unrecognized_symlink_targets(self):
+        app_target = Path(self.sandbox.name) / "foreign-app"
+        plugin_target = Path(self.sandbox.name) / "foreign-plugin"
+        app_target.mkdir()
+        plugin_target.mkdir()
+        (app_target / "keep").write_text("app\n")
+        (plugin_target / "keep").write_text("plugin\n")
+        self.data.mkdir(parents=True)
+        (self.data / "ask-omar").symlink_to(app_target, target_is_directory=True)
+        self.plugin.parent.mkdir(parents=True)
+        self.plugin.symlink_to(plugin_target, target_is_directory=True)
+
+        self.run_script("uninstall.sh")
+
+        self.assertEqual((app_target / "keep").read_text(), "app\n")
+        self.assertEqual((plugin_target / "keep").read_text(), "plugin\n")
+        self.assertTrue((self.data / "ask-omar").is_symlink())
+        self.assertTrue(self.plugin.is_symlink())
+
+    def test_foreign_launchers_block_install_and_survive_uninstall(self):
+        for name in ("ask-omar", "ask-omar-open", "ask-omar-capture"):
+            with self.subTest(name=name):
+                self.reset_home()
+                launcher = self.home / ".local/bin" / name
+                launcher.parent.mkdir(parents=True)
+                launcher.write_text("#!/bin/sh\necho not-ours\n")
+                result = self.run_script("install.sh", "--backend-only", success=False)
+                self.assertIn("did not install", result.stderr)
+                self.assertEqual(launcher.read_text(), "#!/bin/sh\necho not-ours\n")
+
+                self.run_script("uninstall.sh", "--backend-only")
+                self.assertEqual(launcher.read_text(), "#!/bin/sh\necho not-ours\n")
+
+    def test_exact_legacy_launchers_upgrade_to_marked_sources(self):
+        for release in ("v0.1.0", REVIEWED_COMMIT):
+            with self.subTest(release=release):
+                self.reset_home()
+                bin_home = self.home / ".local/bin"
+                bin_home.mkdir(parents=True)
+                (bin_home / "ask-omar").write_text(
+                    "#!/usr/bin/env bash\n"
+                    "set -euo pipefail\n"
+                    "DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}\n"
+                    'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin${PATH:+:$PATH}"\n'
+                    'export PYTHONPATH="$DATA_HOME/ask-omar/service${PYTHONPATH:+:$PYTHONPATH}"\n'
+                    'exec python -m ask_omar "$@"\n'
+                )
+                (bin_home / "ask-omar-open").write_text(
+                    "#!/usr/bin/env bash\n"
+                    "set -euo pipefail\n"
+                    "systemctl --user start ask-omar.service\n"
+                    'exec omarchy-shell ask-omar "${1:-open}"\n'
+                )
+                legacy_capture = subprocess.check_output(
+                    ["git", "show", f"{release}:scripts/capture.sh"], cwd=ROOT
+                )
+                (bin_home / "ask-omar-capture").write_bytes(legacy_capture)
+
+                self.run_script("install.sh", "--backend-only")
+
+                for name in ("ask-omar", "ask-omar-open", "ask-omar-capture"):
+                    self.assertIn("# Installed by Ask Omar", (bin_home / name).read_text())
+                cli = (bin_home / "ask-omar").read_text()
+                self.assertNotIn("exec python ", cli)
+                python = Path(shutil.which("python", path=self.env["PATH"])).resolve()
+                self.assertIn(str(python), cli)
+
+    def test_config_symlink_is_preserved_without_chmod(self):
+        target = Path(self.sandbox.name) / "external-config.toml"
+        target.write_text("external config\n")
+        target.chmod(0o644)
+        config = self.config / "ask-omar/config.toml"
+        config.parent.mkdir(parents=True)
+        config.symlink_to(target)
+
+        self.run_script("install.sh", "--backend-only")
+
+        self.assertTrue(config.is_symlink())
+        self.assertEqual(target.read_text(), "external config\n")
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o644)
+
+    def test_symlinked_bin_parent_is_supported(self):
+        external_bin = Path(self.sandbox.name) / "external-bin"
+        external_bin.mkdir()
+        local = self.home / ".local"
+        local.mkdir()
+        (local / "bin").symlink_to(external_bin, target_is_directory=True)
+
+        self.run_script("install.sh", "--backend-only")
+
+        self.assertTrue((external_bin / "ask-omar").is_file())
+        self.assertTrue((external_bin / "ask-omar-open").is_file())
+
+    def test_untracked_package_files_and_caches_are_not_installed(self):
+        checkout = Path(self.sandbox.name) / "checkout"
+        self.make_checkout(checkout)
+        package = checkout / "service/ask_omar"
+        (package / "untracked-secret.txt").write_text("do not install\n")
+        cache = package / "__pycache__"
+        cache.mkdir()
+        (cache / "cached.pyc").write_bytes(b"cache")
+
+        self.run_script("install.sh", "--backend-only", root=checkout)
+
+        installed = self.data / "ask-omar/service/ask_omar"
+        self.assertFalse((installed / "untracked-secret.txt").exists())
+        self.assertFalse((installed / "__pycache__").exists())
 
 
 if __name__ == "__main__":

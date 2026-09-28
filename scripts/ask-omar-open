@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Installed by Ask Omar
+set -euo pipefail
+systemctl --user start ask-omar.service
+exec omarchy-shell ask-omar "${1:-open}"

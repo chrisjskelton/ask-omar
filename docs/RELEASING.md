@@ -8,9 +8,9 @@ Before publishing a release:
 
 1. Run the test suite and root plugin validation against the exact release commit.
 2. Review security, private data and Git author/committer identities; do not push private history or scratch/demo recording files.
-3. Verify the README install command against the intended tag and test installation/update/removal in an isolated environment.
+3. Keep `main` fixed while it is under marketplace review. Verify the README install command against the intended full commit and test installation/update/removal in an isolated environment.
 4. Update the README/gallery/marketplace preview together and keep the aboutme.md demo in sync.
-5. Run remote CI, then publish the reviewed experimental tag and release notes. Verify repository and website links before announcing.
+5. Run remote CI, then publish the reviewed experimental tag and release notes. Put the release's full 40-character commit in the notes and marketplace issue so users can verify their checkout before installation. Verify repository and website links before announcing.
 6. Remove superseded branches only after their work is merged or preserved privately and the final release is verified.
 
 The current demo is 49.2 seconds, silent and captioned. It joins real recordings and omits response waits; dictation is documented but not demonstrated in this cut.

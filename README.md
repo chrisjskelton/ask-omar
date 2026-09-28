@@ -35,12 +35,15 @@ The installer checks dependencies before changing files. It does not request roo
 Read the permissions below first, then clone and inspect the release:
 
 ```bash
-git clone --branch v0.1.1 https://github.com/chrisjskelton/ask-omar.git
+# Copy the full commit from the v0.1.2 release notes:
+ASK_OMAR_COMMIT=<full 40-character commit>
+git clone https://github.com/chrisjskelton/ask-omar.git
 cd ask-omar
-make install
+git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
+make install ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 ```
 
-This installs user-owned files, enables the companion user service, adds the widget and restarts the Omarchy shell to load it. Your existing Ask Omar configuration is preserved.
+Use the full commit printed in the release notes, not a tag or shortened hash. The installer verifies that exact commit and a clean checkout before it runs the tests or changes installed files. It then installs user-owned files, enables the companion user service, adds the widget and restarts the Omarchy shell to load it. Your existing Ask Omar configuration is preserved.
 
 For AI requests, run `pi`, use `/login` to connect your provider, then:
 
@@ -63,7 +66,9 @@ omarchy plugin add https://github.com/chrisjskelton/ask-omar.git --enable
 
 ```bash
 cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
-make setup
+ASK_OMAR_COMMIT=<full 40-character commit>
+git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
+make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 ```
 
 Then run `ask-omar setup`. A marketplace listing is discovery, not a security certification. The plugin ID remains `ask-omar.assistant` for existing installations.
@@ -96,7 +101,26 @@ State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `$
 
 ## Update and remove
 
-For a release checkout, inspect the new release notes, fetch its tag, check it out, then run `make install` again. For the marketplace route, update the plugin through Omarchy, then run `make setup` again from its installed directory to update the companion service too.
+For a release checkout, inspect the new release notes and use their full commit:
+
+```bash
+ASK_OMAR_COMMIT=<full 40-character commit from the release notes>
+git fetch origin
+git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
+make install ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
+```
+
+For the marketplace route, update the checkout, pin it to the release commit, then update the companion service:
+
+```bash
+cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
+git fetch origin
+ASK_OMAR_COMMIT=<full 40-character commit from the release notes>
+git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
+make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
+```
+
+To remove Ask Omar:
 
 ```bash
 make uninstall
@@ -113,7 +137,8 @@ Remove original captures separately if wanted. Local deletion does not erase pro
 
 ## Troubleshooting
 
-- **Widget says backend missing:** run `make setup` from its installed checkout, then `ask-omar setup`.
+- **Checkout verification fails:** copy the full 40-character commit from the release notes, run `git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"`, and remove or preserve any local changes before retrying with `make install ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"` (or `make setup` for the marketplace route).
+- **Widget says backend missing:** verify the installed checkout as shown above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`.
 - **Pi missing or disconnected:** install Pi, sign in within `pi` using `/login`, and rerun `ask-omar setup`.
 - **Service problem:** run `systemctl --user status ask-omar.service` and `journalctl --user -u ask-omar.service -n 40`. Inspect logs for private content before sharing.
 - **No mic:** install and configure Omarchy Dictation/Voxtype. The mic is optional.

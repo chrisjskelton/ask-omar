@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Installed by Ask Omar
+set -euo pipefail
+DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin${PATH:+:$PATH}"
+export PYTHONPATH="$DATA_HOME/ask-omar/service${PYTHONPATH:+:$PYTHONPATH}"
+exec __ASK_OMAR_PYTHON__ -m ask_omar "$@"

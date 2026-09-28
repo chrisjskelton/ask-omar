@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2 — Verified installation
+
+- Installation requires the full release commit and refuses a modified checkout.
+- The installer refuses symlinked destinations and preserves launchers it did not install.
+- Installed application files come only from the verified commit, excluding caches and untracked files.
+- The command-line launcher uses the absolute Python interpreter checked during installation.
+- Uninstall preserves unrecognized files at Ask Omar's launcher paths.
+
 ## 0.1.1 — Command access controls
 
 - Pi's unrestricted Bash tool is replaced by Ask Omar's command tool.
