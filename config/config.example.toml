@@ -10,7 +10,8 @@ model = ""
 thinking = "low"
 # ask: show each command, with an optional grant for this question (default)
 # off: do not offer model-generated command execution
-# full: run model-generated commands without approval; use only when you accept the risk
+# full: run routine commands automatically; ask about recognized high-risk commands
+# unrestricted: run every command without asking; dangerous and not recommended
 system_access = "ask"
 timeout_seconds = 90
 

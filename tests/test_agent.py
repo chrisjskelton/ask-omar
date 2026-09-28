@@ -54,7 +54,8 @@ class AgentCommandTests(unittest.TestCase):
         expectations = {
             "ask": "run_command tool asks before execution",
             "off": "run_command tool is unavailable",
-            "full": "explicitly enabled Allow All",
+            "full": "asks only for recognized high-risk commands",
+            "unrestricted": "explicitly enabled Always Allow",
         }
         for mode, expected in expectations.items():
             with self.subTest(mode=mode):

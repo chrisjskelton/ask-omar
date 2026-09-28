@@ -88,6 +88,24 @@ class QmlBehaviorTests(unittest.TestCase):
         self.assertNotIn("TextEdit.MarkdownText", QML)
         self.assertIn("textFormat: TextEdit.PlainText", QML)
 
+    def test_unrestricted_access_requires_a_second_settings_click(self):
+        script = "\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const context = {accessSaving:false, dangerousAccessPending:false, accessSaveMessage:"",',
+            '  setAccessProcess:{running:false,command:[]}};',
+            'vm.createContext(context);', functions("selectSystemAccess"),
+            'vm.runInContext(`selectSystemAccess("unrestricted")`, context);',
+            'assert.equal(context.dangerousAccessPending, true);',
+            'assert.equal(context.setAccessProcess.running, false);',
+            'assert.match(context.accessSaveMessage, /every shell command without asking/);',
+            'vm.runInContext(`selectSystemAccess("unrestricted")`, context);',
+            'assert.equal(context.dangerousAccessPending, false);',
+            'assert.equal(context.setAccessProcess.running, true);',
+            'assert.deepEqual(Array.from(context.setAccessProcess.command),',
+            '  ["ask-omar", "set-access", "unrestricted"]);',
+        ))
+        run_node(script)
+
     def test_oversized_question_keeps_both_composers(self):
         script = "\n".join((
             'const vm = require("node:vm"); const assert = require("node:assert/strict");',

@@ -36,6 +36,11 @@ const RISK_RULES: RiskRule[] = [
     description: "permanently delete files and folders recursively",
   },
   {
+    pattern: /\bshred\b/i,
+    reason: "Secure file overwrite",
+    description: "overwrite a file or device so its contents cannot be recovered",
+  },
+  {
     pattern: /\b(?:mkfs(?:\.[a-z0-9]+)?|wipefs|blkdiscard)\b/i,
     reason: "Disk or filesystem erasure",
     description: "erase a disk or filesystem",
@@ -46,6 +51,26 @@ const RISK_RULES: RiskRule[] = [
     description: "write directly to a device and destroy data",
   },
   {
+    pattern: /\bdd\b[^;&|\n]*\bof=/i,
+    reason: "Output overwrite",
+    description: "overwrite the output named in a low-level copy command",
+  },
+  {
+    pattern: /\b(?:fdisk|sfdisk|cfdisk|parted|sgdisk)\b/i,
+    reason: "Disk partitioning",
+    description: "change a disk's partitions and destroy data",
+  },
+  {
+    pattern: /\bchmod\b(?=[^;&|\n]*(?:-[A-Za-z]*R|--recursive))(?=[^;&|\n]*(?:\b(?:777|0777|1777|7777)\b|\b(?:a|ugo)\+rwx\b))/,
+    reason: "Recursive world-writable permissions",
+    description: "make a directory tree writable by every user",
+  },
+  {
+    pattern: /\bchown\b[^;&|\n]*(?:-[A-Za-z]*R|--recursive)/,
+    reason: "Recursive ownership change",
+    description: "change ownership across a directory tree",
+  },
+  {
     pattern: /\b(?:sudo|doas|pkexec)\b/i,
     reason: "Elevated privileges",
     description: "run a command with administrator privileges",
@@ -54,6 +79,11 @@ const RISK_RULES: RiskRule[] = [
     pattern: /\b(?:shutdown|reboot|halt|poweroff)\b/i,
     reason: "System power control",
     description: "shut down or restart the computer",
+  },
+  {
+    pattern: /\b(?:docker|podman)\s+(?:run|create)\b(?=[^;&|\n]*(?:--privileged(?:=\S+)?|--(?:pid|network|userns|uts|ipc)=host\b|(?:-v(?:=|\s*)|--volume(?:=|\s+))\/?:(?:\/|\s)|--mount(?:=|\s+)[^;&|\n]*(?:source|src)=\/?(?:,|\s|$)|\/(?:var\/)?run\/(?:docker|podman)\.sock))/i,
+    reason: "Privileged container access",
+    description: "give a container broad access to the host computer",
   },
   {
     pattern: REMOTE_SHELL_PIPE,
@@ -82,7 +112,7 @@ export function evaluateCommand(command: string): RiskRule | null {
   return RISK_RULES.find((rule) => variants.some((value) => rule.pattern.test(value))) ?? null;
 }
 
-type AccessMode = "ask" | "off" | "full";
+type AccessMode = "ask" | "off" | "full" | "unrestricted";
 
 interface CommandResult {
   stdout: string;
@@ -100,7 +130,7 @@ const COMMAND_LIMIT_BYTES = 32 * 1024;
 
 function accessMode(): AccessMode {
   const value = String(process.env.ASK_OMAR_SYSTEM_ACCESS || "ask").toLowerCase();
-  return value === "off" || value === "full" ? value : "ask";
+  return value === "off" || value === "full" || value === "unrestricted" ? value : "ask";
 }
 
 function temporaryGrantMs(): number {
@@ -225,7 +255,8 @@ export default function (pi: ExtensionAPI) {
       }
 
       const risk = evaluateCommand(command);
-      const needsApproval = risk !== null || (mode === "ask" && Date.now() >= temporaryGrantUntil);
+      const needsApproval = mode !== "unrestricted"
+        && (risk !== null || (mode === "ask" && Date.now() >= temporaryGrantUntil));
       if (needsApproval) {
         if (!ctx.hasUI) {
           const reason = risk ? `high-risk command (${risk.reason})` : "command";

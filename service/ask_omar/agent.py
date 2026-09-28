@@ -160,7 +160,9 @@ class PiAgent:
                     if self.config.system_access == "ask"
                     else "The run_command tool is unavailable.\n"
                     if self.config.system_access == "off"
-                    else "The user explicitly enabled Allow All; routine commands do not ask, but high-risk commands still require approval.\n"
+                    else "The run_command tool asks only for recognized high-risk commands.\n"
+                    if self.config.system_access == "full"
+                    else "The user explicitly enabled Always Allow; run_command executes without approval, including recognized high-risk commands.\n"
                 )
             ),
             "--name", "Ask Omar",

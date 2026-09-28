@@ -128,7 +128,7 @@ BarWidget {
   property bool agentSaving: false
   property string agentSaveMessage: ""
   property bool accessSaving: false
-  property bool fullAccessPending: false
+  property bool dangerousAccessPending: false
   property string accessSaveMessage: ""
   property bool restarting: false
   property bool quitting: false
@@ -578,7 +578,7 @@ BarWidget {
 
   function toggleSettings() {
     settingsExpanded = !settingsExpanded
-    fullAccessPending = false
+    dangerousAccessPending = false
     accessSaveMessage = ""
     panelView = "chat"
     historyPreview = null
@@ -631,7 +631,7 @@ BarWidget {
     replyExpanded = false
     screenshotMenuExpanded = false
     aiSettingsHelpExpanded = false
-    fullAccessPending = false
+    dangerousAccessPending = false
     accessSaveMessage = ""
     hideFromBarPending = false
   }
@@ -1287,12 +1287,12 @@ BarWidget {
 
   function selectSystemAccess(mode) {
     if (accessSaving || setAccessProcess.running) return
-    if (mode === "full" && !fullAccessPending) {
-      fullAccessPending = true
-      accessSaveMessage = "Allow All runs routine shell commands without asking. High-risk commands still need approval. Click again to enable it."
+    if (mode === "unrestricted" && !dangerousAccessPending) {
+      dangerousAccessPending = true
+      accessSaveMessage = "Always Allow runs every shell command without asking, including commands detected as high risk. Click Confirm Always Allow to accept this risk."
       return
     }
-    fullAccessPending = false
+    dangerousAccessPending = false
     accessSaving = true
     accessSaveMessage = "Saving…"
     setAccessProcess.command = ["ask-omar", "set-access", mode]
@@ -1338,6 +1338,13 @@ BarWidget {
 
   function aiUnavailable() {
     return healthChecked && healthStatus !== "ready" && healthStatus !== "checking"
+  }
+
+  function systemAccessLabel() {
+    if (healthSystemAccess === "off") return "Block Commands"
+    if (healthSystemAccess === "full") return "Ask for High-Risk Commands"
+    if (healthSystemAccess === "unrestricted") return "Always Allow — Dangerous"
+    return "Ask First"
   }
 
   function healthTitle() {
@@ -2489,10 +2496,13 @@ BarWidget {
               focusable: true
               bordered: true
               foreground: root.foreground
-              hoverColor: root.settingsExpanded ? root.accent : root.foreground
+              hoverColor: root.settingsExpanded || root.healthSystemAccess === "unrestricted"
+                ? root.accent : root.foreground
               fontFamily: root.bar ? root.bar.fontFamily : Style.font.family
               fontSize: Style.font.icon
-              tooltipText: root.settingsExpanded ? "Close settings" : "Configure Ask Omar"
+              tooltipText: root.settingsExpanded
+                ? "Close settings"
+                : "Configure Ask Omar · Shell access: " + root.systemAccessLabel()
               Accessible.name: tooltipText
               onClicked: root.toggleSettings()
             }
@@ -2826,7 +2836,7 @@ BarWidget {
             Text {
               textFormat: Text.PlainText
               width: parent.width
-              text: "Shell commands run with your permissions. They are not sandboxed. High-risk commands still need approval in every mode."
+              text: "Shell commands run with your permissions. They are not sandboxed. Ask First is recommended."
               wrapMode: Text.WordWrap
               color: Qt.darker(root.foreground, 1.35)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -2851,6 +2861,31 @@ BarWidget {
               }
 
               Button {
+                text: (root.healthSystemAccess === "full" ? "󰄬  " : "") + "Ask for High-Risk Commands"
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                enabled: !root.accessSaving
+                tooltipText: "Run routine shell commands without asking"
+                Accessible.name: (root.healthSystemAccess === "full" ? "Selected: " : "") + tooltipText
+                onClicked: root.selectSystemAccess("full")
+              }
+
+              Button {
+                text: (root.healthSystemAccess === "unrestricted" ? "󰄬  " : "")
+                  + (root.dangerousAccessPending ? "Confirm Always Allow" : "Always Allow — Dangerous")
+                focusable: true
+                bordered: true
+                foreground: root.foreground
+                accent: root.accent
+                enabled: !root.accessSaving
+                tooltipText: "Run every shell command without approval"
+                Accessible.name: (root.healthSystemAccess === "unrestricted" ? "Selected: " : "") + tooltipText
+                onClicked: root.selectSystemAccess("unrestricted")
+              }
+
+              Button {
                 text: (root.healthSystemAccess === "off" ? "󰄬  " : "") + "Block Commands"
                 focusable: true
                 bordered: true
@@ -2861,19 +2896,6 @@ BarWidget {
                 Accessible.name: (root.healthSystemAccess === "off" ? "Selected: " : "") + tooltipText
                 onClicked: root.selectSystemAccess("off")
               }
-
-              Button {
-                text: (root.healthSystemAccess === "full" ? "󰄬  " : "")
-                  + (root.fullAccessPending ? "Confirm Allow All" : "Allow All")
-                focusable: true
-                bordered: true
-                foreground: root.foreground
-                accent: root.accent
-                enabled: !root.accessSaving
-                tooltipText: "Run routine shell commands without asking"
-                Accessible.name: (root.healthSystemAccess === "full" ? "Selected: " : "") + tooltipText
-                onClicked: root.selectSystemAccess("full")
-              }
             }
 
             Text {
@@ -2881,6 +2903,8 @@ BarWidget {
               width: parent.width
               text: root.healthSystemAccess === "off"
                 ? "Omar cannot run shell commands."
+                : root.healthSystemAccess === "unrestricted"
+                  ? "Always Allow runs every shell command without asking. This is dangerous."
                 : root.healthSystemAccess === "full"
                   ? "Routine commands run without asking. High-risk commands still need approval."
                   : "Approve each command, or allow routine commands for the next 15 minutes."
@@ -2897,7 +2921,7 @@ BarWidget {
               width: parent.width
               text: root.accessSaveMessage
               wrapMode: Text.WordWrap
-              color: root.fullAccessPending || root.healthSystemAccess === "full"
+              color: root.dangerousAccessPending || root.healthSystemAccess === "unrestricted"
                 ? root.accent
                 : Qt.darker(root.foreground, 1.35)
               font.family: root.bar ? root.bar.fontFamily : Style.font.family

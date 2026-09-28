@@ -362,7 +362,7 @@ class AskOmar:
         if mode not in SYSTEM_ACCESS_MODES:
             return {
                 "ok": False,
-                "error": "System access must be Ask First, Block Commands, or Allow All.",
+                "error": "System access must be Ask First, Ask for High-Risk Commands, Always Allow, or Block Commands.",
                 "error_code": "invalid_system_access",
             }
         with self.foreground_lock:

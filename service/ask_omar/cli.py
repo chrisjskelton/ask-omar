@@ -177,7 +177,7 @@ def parser() -> argparse.ArgumentParser:
     set_agent.add_argument("--model")
     set_agent.add_argument("--thinking")
     set_access = commands.add_parser("set-access", help="Change model-generated command access")
-    set_access.add_argument("mode", choices=("ask", "off", "full"))
+    set_access.add_argument("mode", choices=("ask", "off", "full", "unrestricted"))
     commands.add_parser("serve", help="Run the local service")
     return result
 

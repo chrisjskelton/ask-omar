@@ -6,9 +6,11 @@
 - Ask First shows the exact command with Allow once, Allow for 15 minutes, and Deny.
 - Temporary grants cover routine commands in later requests for up to 15 minutes and end early on New conversation or service restart.
 - Timeouts identify the last tool or shell command Pi was using when available.
-- Block Commands disables the shell command tool; explicitly enabled Allow All runs routine commands without asking.
+- Ask for High-Risk Commands runs routine commands without asking; Block Commands disables the shell command tool.
+- Always Allow — Dangerous runs every shell command without approval and requires separate confirmation in Settings.
 - Direct read-only Pi tools remain automatic to keep routine inspection quick.
-- Clearly high-risk commands such as `rm -rf` always require fresh approval, including during temporary grants and Allow All.
+- Except in Always Allow, recognised high-risk commands require fresh approval, including during temporary grants and Ask for High-Risk Commands.
+- High-risk recognition also covers partitioning tools, low-level output overwrites, recursive permission and ownership changes, and privileged or host-connected containers.
 - The high-risk check is an additional warning gate, not a sandbox or comprehensive shell analyser.
 - Commands are bounded to 60 seconds, 32 KiB of command text, and 64 KiB of captured output.
 - The assistant prompt prefers direct read-only tools and focused shell commands instead of bundled command chains.

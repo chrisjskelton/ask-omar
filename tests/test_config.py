@@ -26,6 +26,8 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(Config.load(path).system_access, "ask")
             path.write_text('[agent]\nsystem_access = "full"\n', encoding="utf-8")
             self.assertEqual(Config.load(path).system_access, "full")
+            path.write_text('[agent]\nsystem_access = "unrestricted"\n', encoding="utf-8")
+            self.assertEqual(Config.load(path).system_access, "unrestricted")
             path.write_text('[agent]\nsystem_access = "unsafe"\n', encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "system_access must be one of"):
                 Config.load(path)

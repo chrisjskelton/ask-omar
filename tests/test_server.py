@@ -544,6 +544,21 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertEqual(result["error_code"], "invalid_system_access")
         old_agent.stop.assert_not_called()
 
+    def test_set_system_access_accepts_unrestricted_mode(self):
+        config_path = Path(self.temp.name) / "config.toml"
+        config_path.write_text(
+            '[agent]\nprovider = "openai-codex"\nmodel = "gpt-5.6-sol"\nsystem_access = "ask"\n',
+            encoding="utf-8",
+        )
+        self.omar.config_path = config_path
+        self.omar.agent = Mock()
+        with patch("ask_omar.server.PiAgent") as agent_cls:
+            agent_cls.return_value = Mock()
+            result = self.omar.set_system_access("unrestricted")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["system_access"], "unrestricted")
+        self.assertEqual(Config.load(config_path).system_access, "unrestricted")
+
     def test_seed_agent_defaults_uses_pi_settings_when_unset(self):
         config_path = Path(self.temp.name) / "empty.toml"
         config_path.write_text('[agent]\nprovider = ""\nmodel = ""\nthinking = "low"\n', encoding="utf-8")

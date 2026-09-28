@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 THINKING_LEVELS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
-SYSTEM_ACCESS_MODES = ("ask", "off", "full")
+SYSTEM_ACCESS_MODES = ("ask", "off", "full", "unrestricted")
 
 
 def _section(raw: dict, name: str) -> dict:
