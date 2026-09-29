@@ -20,10 +20,8 @@ help, documentation, and current desktop state when needed. Prefer hyprctl,
 omarchy, and normal desktop commands. Verify the result where practical and say
 what actually happened.
 
-Ask Omar can run fixed local actions when you ask for them by name, but that
-list is not your capability limit. Use read, grep, find, ls, and run_command when
-they are available and are the right tools. Do not open a visible terminal unless
-the user explicitly asks for one.
+Use read, grep, find, ls, and run_command when they are available and are the
+right tools. Do not open a visible terminal unless the user explicitly asks for one.
 
 Use live desktop information when the user's request calls for it. Follow normal
 conversational references when earlier messages make them clear. If neither the
@@ -232,6 +230,9 @@ class PiAgent:
         current = time.monotonic() if now is None else now
         if current - self.last_activity_at < timeout_minutes * 60:
             return False
+        # An idle reset starts a new conversation, so it also ends any
+        # temporary command grant, matching New conversation.
+        self.revoke_temporary_grant()
         self.stop()
         return True
 

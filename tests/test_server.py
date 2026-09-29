@@ -9,8 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from ask_omar.agent import AgentCancelled
+from ask_omar.agent import AgentCancelled, AgentError
 from ask_omar.config import Config
+from ask_omar import __version__
 from ask_omar.server import MAX_REQUEST_BYTES, AskOmar, OmarServer
 from ask_omar.state import StateStore
 
@@ -127,7 +128,7 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertIn("newest 100 requests", prompt)
         self.assertIn("view-only", prompt)
         self.assertIn("does not restore that old Pi context", prompt)
-        self.assertIn("not a limit on your capabilities", prompt)
+        self.assertNotIn("convenience buttons", prompt)
         self.assertIn("provider=test-provider, model=test-model, reasoning=medium", prompt)
         self.assertNotIn("Active window", prompt)
         self.assertNotIn("Live system context", prompt)
@@ -410,6 +411,80 @@ class LocalAnswerTests(unittest.TestCase):
             with patch("ask_omar.server.subprocess.run", return_value=completed):
                 result = self.omar.health()
             self.assertEqual(result["agent"]["status"], "signin")
+
+    @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
+    def test_questions_reuse_a_recent_successful_sign_in_check(self, _which):
+        ready = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout='{"status":"ready","authType":"oauth"}', stderr=""
+        )
+        with patch("ask_omar.server.subprocess.run", return_value=ready) as run:
+            self.assertEqual(self.omar.health()["agent"]["status"], "ready")
+            self.assertEqual(self.omar.health(refresh=False)["agent"]["status"], "ready")
+            self.assertEqual(run.call_count, 1)
+            # An explicit check from Settings always asks Pi again.
+            self.omar.health()
+            self.assertEqual(run.call_count, 2)
+
+    @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
+    def test_failed_sign_in_checks_are_never_reused(self, _which):
+        not_ready = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout='{"status":"not_ready"}', stderr=""
+        )
+        with patch("ask_omar.server.subprocess.run", return_value=not_ready) as run:
+            self.omar.health()
+            self.assertEqual(self.omar.health(refresh=False)["agent"]["status"], "signin")
+            self.assertEqual(run.call_count, 2)
+
+    @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
+    def test_cached_sign_in_is_cleared_after_an_agent_error(self, _which):
+        self.omar.auth_ready_cache = ("openai-codex", float("inf"))
+
+        class FailingAgent:
+            temporary_grant_until = 0
+
+            def query(self, *_args, **_kwargs):
+                raise AgentError("Pi rejected the request.", "pi_error")
+
+            def stop(self):
+                pass
+
+        self.omar.agent = FailingAgent()
+        result = self.omar.query("hello")
+        self.assertFalse(result["ok"])
+        self.assertIsNone(self.omar.auth_ready_cache)
+
+    @patch("ask_omar.server.shutil.which", return_value=None)
+    def test_health_reports_service_version_and_state_warning(self, _which):
+        self.omar.state.warning = "notes were kept aside"
+        result = self.omar.health()
+        self.assertEqual(result["version"], __version__)
+        self.assertEqual(result["state_warning"], "notes were kept aside")
+        self.assertNotIn("apps", result)
+
+    def test_notes_and_history_responses_carry_state_warning(self):
+        self.omar.state.warning = "notes were kept aside"
+        notes = self.omar.handle({"type": "scratchpad_notes"})
+        history = self.omar.handle({"type": "history"})
+        self.assertEqual(notes["warning"], "notes were kept aside")
+        self.assertEqual(history["warning"], "notes were kept aside")
+
+    @patch("ask_omar.server.launch_url")
+    @patch.object(AskOmar, "agent_prompt", return_value="structured prompt")
+    def test_bare_search_requests_reach_omar_instead_of_google(self, _prompt, launch_url):
+        class RecordingAgent:
+            temporary_grant_until = 0
+            last_tools_used: list[str] = []
+
+            def query(self, *_args, **_kwargs):
+                return "Found them."
+
+            def stop(self):
+                pass
+
+        self.omar.agent = RecordingAgent()
+        result = self.omar.query("search my Downloads for invoices")
+        self.assertEqual(result["kind"], "assistant")
+        launch_url.assert_not_called()
 
     def test_stopped_request_cannot_record_a_late_success(self):
         class LateSuccessAgent:

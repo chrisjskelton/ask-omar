@@ -441,6 +441,13 @@ class AgentSessionExpiryTests(unittest.TestCase):
             self.assertTrue(agent.expire_idle_session(now=1900.0))
             stop.assert_called_once_with()
 
+    def test_idle_reset_also_ends_a_temporary_grant(self):
+        agent = PiAgent(Config(conversation_idle_minutes=30), temporary_grant_until=10**15)
+        agent.last_activity_at = 100.0
+        with patch.object(agent, "stop"):
+            self.assertTrue(agent.expire_idle_session(now=1900.0))
+        self.assertEqual(agent.temporary_grant_until, 0)
+
     def test_zero_timeout_keeps_session_until_explicit_reset(self):
         agent = PiAgent(Config(conversation_idle_minutes=0))
         agent.last_activity_at = 100.0

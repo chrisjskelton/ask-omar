@@ -6,14 +6,15 @@ import shutil
 import socketserver
 import subprocess
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+from . import __version__
 from .actions import (
     action_by_id,
-    discover_apps,
     launch,
     launch_url,
     open_url_request,
@@ -34,6 +35,7 @@ from .config import (
 from .state import StateStore
 
 
+AUTH_CHECK_CACHE_SECONDS = 10 * 60
 MAX_SCRATCHPAD_ATTACHMENT_BYTES = 25 * 1024 * 1024
 MAX_REQUEST_BYTES = 5 * 1024 * 1024
 SCRATCHPAD_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -64,6 +66,9 @@ class AskOmar:
         self.foreground_lock = threading.RLock()
         self.active_cancel_event: threading.Event | None = None
         self.active_lock = threading.Lock()
+        # A successful Pi sign-in check is reused briefly so each question does
+        # not wait for another `pi auth check`. Failures are never cached.
+        self.auth_ready_cache: tuple[str, float] | None = None
 
     @staticmethod
     def response(**values: Any) -> dict[str, Any]:
@@ -77,7 +82,6 @@ class AskOmar:
             launch(action)
         except OSError as error:
             return {"ok": False, "error": f"Could not run {action.label}: {error}"}
-        self.state.record_action(action.id)
         self.state.add_history(query or action.label, action.description, "action")
         return self.response(
             kind="action",
@@ -122,7 +126,6 @@ class AskOmar:
             except OSError as error:
                 return {"ok": False, "error": f"Could not open the link: {error}"}
             message = "Opening the link in your browser."
-            self.state.record_action("url.open")
             self.state.add_history(query, message, "action")
             return self.response(kind="action", action="url.open", message=message, dismiss=True)
 
@@ -134,7 +137,6 @@ class AskOmar:
             except OSError as error:
                 return {"ok": False, "error": f"Could not run the Google search: {error}"}
             message = f"Searching Google for: {search_terms}"
-            self.state.record_action("web.search")
             self.state.add_history(query, message, "action")
             return self.response(kind="action", action="web.search", message=message, dismiss=True)
 
@@ -153,6 +155,8 @@ class AskOmar:
             self.state.add_history(query, stopped["message"], "stopped")
             return stopped
         except AgentError as error:
+            # Re-check the provider sign-in next time instead of trusting the cache.
+            self.auth_ready_cache = None
             if cancel_event.is_set():
                 stopped = self.stopped_response()
                 self.state.add_history(query, stopped["message"], "stopped")
@@ -183,7 +187,7 @@ class AskOmar:
 
     def query_blocked_by_agent_readiness(self) -> dict[str, Any] | None:
         """Fail fast when Pi is missing, unsigned-in, or unset instead of waiting on a hung prompt."""
-        readiness = self.health()
+        readiness = self.health(refresh=False)
         agent = readiness.get("agent") if isinstance(readiness.get("agent"), dict) else {}
         status = str(agent.get("status", ""))
         provider = str(readiness.get("provider") or self.config.provider or "your provider")
@@ -449,12 +453,10 @@ class AskOmar:
         return (
             f"User request: {query}\n\n"
             f"Ask Omar product context:\n{product_context}\n\n"
-            "The user can use separate convenience buttons for frequent actions. "
-            "Those buttons are not a limit on your capabilities.\n\n"
             f"{OMARCHY_CHEAT_SHEET}"
         )
 
-    def health(self) -> dict[str, Any]:
+    def health(self, refresh: bool = True) -> dict[str, Any]:
         self.seed_agent_defaults()
         if self.config.backend != "pi":
             agent_ready: dict[str, Any] = {
@@ -477,7 +479,19 @@ class AskOmar:
                     "Omar can also pick Pi's defaults once Pi is signed in."
                 ),
             }
+        elif (
+            not refresh
+            and self.auth_ready_cache is not None
+            and self.auth_ready_cache[0] == self.config.provider
+            and time.monotonic() < self.auth_ready_cache[1]
+        ):
+            agent_ready = {
+                "status": "ready",
+                "code": "credentials_ready",
+                "message": "Pi found and provider credentials are available locally.",
+            }
         else:
+            self.auth_ready_cache = None
             try:
                 check = subprocess.run(
                     [
@@ -499,6 +513,10 @@ class AskOmar:
                         "message": "Pi found and provider credentials are available locally.",
                         "auth_type": str(raw.get("authType", "")),
                     }
+                    self.auth_ready_cache = (
+                        self.config.provider,
+                        time.monotonic() + AUTH_CHECK_CACHE_SECONDS,
+                    )
                 elif pi_status in ("not_ready", "invalid"):
                     agent_ready = {
                         "status": "signin",
@@ -519,6 +537,7 @@ class AskOmar:
                 }
         return self.response(
             kind="health",
+            version=__version__,
             backend=self.config.backend,
             provider=self.config.provider,
             model=self.config.model,
@@ -530,7 +549,7 @@ class AskOmar:
                 "idle_timeout_minutes": self.config.conversation_idle_minutes,
                 "history_limit": self.config.history_limit,
             },
-            apps=len(discover_apps()),
+            state_warning=self.state.warning,
         )
 
     def activity(self) -> dict[str, Any]:
@@ -621,7 +640,11 @@ class AskOmar:
             with self.foreground_lock:
                 return self.perform(str(request.get("id", "")))
         if request_type == "history":
-            return self.response(kind="history", history=self.state.history())
+            return self.response(
+                kind="history",
+                history=self.state.history(),
+                warning=self.state.warning,
+            )
         if request_type == "clear_history":
             self.state.clear_history()
             return self.response(kind="history", history=[])
@@ -647,7 +670,11 @@ class AskOmar:
         if request_type == "scratchpad_attach":
             return self.attach_scratchpad_screenshot(str(request.get("path", "")))
         if request_type == "scratchpad_notes":
-            return self.response(kind="scratchpad_notes", notes=self.state.scratchpad_notes())
+            return self.response(
+                kind="scratchpad_notes",
+                notes=self.state.scratchpad_notes(),
+                warning=self.state.warning,
+            )
         if request_type == "scratchpad_notes_save":
             notes = request.get("notes", [])
             if not isinstance(notes, list):
