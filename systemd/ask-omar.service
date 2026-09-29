@@ -1,3 +1,4 @@
+# Installed by Ask Omar
 [Unit]
 Description=Ask Omar local assistant service
 After=graphical-session.target

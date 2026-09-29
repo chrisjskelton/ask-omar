@@ -1,6 +1,9 @@
 PYTHONPATH := $(CURDIR)/service
 
-.PHONY: test install setup uninstall validate
+.PHONY: verify test install setup uninstall validate
+
+verify:
+	ASK_OMAR_COMMIT='$(ASK_OMAR_COMMIT)' ./scripts/verify-checkout.sh
 
 test:
 	PYTHONPATH=$(PYTHONPATH) python -m unittest discover -s tests -v
@@ -8,10 +11,13 @@ test:
 validate:
 	omarchy plugin validate .
 
-install: test validate
+install: verify
+	$(MAKE) test
+	$(MAKE) validate
 	./scripts/install.sh
 
-setup:
+setup: verify
+	$(MAKE) test
 	./scripts/install.sh --backend-only
 
 uninstall:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Installed by Ask Omar
 set -euo pipefail
 
 notify_shell() {
