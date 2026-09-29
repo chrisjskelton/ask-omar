@@ -457,8 +457,9 @@ class PiAgent:
                         if response is None:
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "cancelled": True})
                             raise AgentError(
-                                "Command approval timed out. Use Allow once, Allow for 15 minutes, or Deny next time — "
-                                "Omar will not ask for the same approval in chat.",
+                                "Command approval timed out. Use "
+                                + self._describe_options(event.get("options", []))
+                                + " next time — Omar will not ask for the same approval in chat.",
                                 "confirmation_timeout",
                             )
                         elif method == "select":
@@ -537,6 +538,16 @@ class PiAgent:
         self.last_tool_description = description
         self.last_tool_completed = True
         self.last_tool_failed = bool(event.get("isError", False))
+
+    @staticmethod
+    def _describe_options(options: Any) -> str:
+        """Name the choices the approval panel actually offered."""
+        names = [str(option) for option in options if str(option)] if isinstance(options, list) else []
+        if not names:
+            return "the approval panel"
+        if len(names) == 1:
+            return names[0]
+        return ", ".join(names[:-1]) + (", or " if len(names) > 2 else " or ") + names[-1]
 
     def revoke_temporary_grant(self) -> None:
         self.temporary_grant_until = 0

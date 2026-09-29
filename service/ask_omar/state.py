@@ -62,6 +62,7 @@ class StateStore:
 
     def load(self) -> None:
         with self._lock:
+            missing = False
             raw: Any = None
             try:
                 if self.path.stat().st_size > self.max_state_bytes:
@@ -69,14 +70,14 @@ class StateStore:
                     return
                 raw = json.loads(self.path.read_text(encoding="utf-8"))
             except FileNotFoundError:
-                pass
+                missing = True
             except (json.JSONDecodeError, UnicodeDecodeError):
                 self._set_aside("could not be read")
                 return
             except OSError as error:
                 self._block_saves(f"Ask Omar could not read its saved notes ({error.strerror or error}).")
                 return
-            if raw is not None and not (isinstance(raw, dict) and raw.get("version") == 1):
+            if not missing and not (isinstance(raw, dict) and raw.get("version") == 1):
                 self._set_aside("is in a format this version does not recognise")
                 return
             if isinstance(raw, dict):

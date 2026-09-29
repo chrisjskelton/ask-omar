@@ -167,6 +167,10 @@ class StateStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assert_set_aside(Path(directory) / "state.json", b'{"version": 1, "draft": "\xff\xfe"}')
 
+    def test_json_null_state_is_kept_instead_of_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assert_set_aside(Path(directory) / "state.json", b"null")
+
     def test_unknown_state_version_is_kept_instead_of_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assert_set_aside(Path(directory) / "state.json", b'{"version": 2, "scratchpad_notes": ["future"]}')

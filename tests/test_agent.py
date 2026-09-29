@@ -441,6 +441,14 @@ class AgentSessionExpiryTests(unittest.TestCase):
             self.assertTrue(agent.expire_idle_session(now=1900.0))
             stop.assert_called_once_with()
 
+    def test_timeout_guidance_names_only_the_offered_choices(self):
+        self.assertEqual(PiAgent._describe_options(["Allow once", "Deny"]), "Allow once or Deny")
+        self.assertEqual(
+            PiAgent._describe_options(["Allow once", "Allow for 15 minutes", "Deny"]),
+            "Allow once, Allow for 15 minutes, or Deny",
+        )
+        self.assertEqual(PiAgent._describe_options(None), "the approval panel")
+
     def test_stopping_pi_always_ends_a_temporary_grant(self):
         agent = PiAgent(Config(), temporary_grant_until=10**15)
         agent.stop()
