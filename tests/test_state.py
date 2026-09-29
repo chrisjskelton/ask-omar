@@ -188,8 +188,17 @@ class StateStoreTests(unittest.TestCase):
             with patch.object(Path, "read_text", side_effect=PermissionError(13, "Permission denied")):
                 store = StateStore(path)
             self.assertIn("could not read", store.warning)
-            with self.assertRaises(ValueError):
-                store.save_scratchpad_notes(["would overwrite"])
+            for operation in (
+                lambda: store.save_scratchpad_notes(["would overwrite"]),
+                lambda: store.set_draft("unsaved draft"),
+                lambda: store.clear_scratchpad(),
+                lambda: store.clear_history(),
+            ):
+                with self.assertRaises(ValueError):
+                    operation()
+            # Nothing unsaved is shown as if it had been kept.
+            self.assertEqual(store.scratchpad_notes(), [""])
+            self.assertEqual(store.draft(), "")
             store.add_history("question", "answer", "assistant")
             self.assertEqual(json.loads(path.read_text())["scratchpad_notes"], ["keep"])
 

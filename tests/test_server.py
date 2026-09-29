@@ -461,6 +461,16 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertEqual(result["state_warning"], "notes were kept aside")
         self.assertNotIn("apps", result)
 
+    def test_readiness_blocked_request_ends_the_conversation(self):
+        agent = Mock()
+        self.omar.agent = agent
+        blocked = {"ok": False, "error": "Omar needs openai-codex connected in Pi.", "error_code": "pi_not_ready"}
+        with patch.object(AskOmar, "query_blocked_by_agent_readiness", return_value=blocked):
+            result = self.omar.query("hello")
+        self.assertEqual(result, blocked)
+        agent.stop.assert_called_once_with()
+        agent.query.assert_not_called()
+
     def test_notes_and_history_responses_carry_state_warning(self):
         self.omar.state.warning = "notes were kept aside"
         notes = self.omar.handle({"type": "scratchpad_notes"})

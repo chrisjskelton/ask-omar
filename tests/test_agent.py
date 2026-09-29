@@ -3,9 +3,10 @@ import io
 import json
 import os
 import selectors
+import tempfile
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from ask_omar.agent import AgentError, PiAgent
 from ask_omar.config import Config
@@ -448,6 +449,22 @@ class AgentSessionExpiryTests(unittest.TestCase):
             "Allow once, Allow for 15 minutes, or Deny",
         )
         self.assertEqual(PiAgent._describe_options(None), "the approval panel")
+
+    def test_replacing_an_exited_pi_process_ends_a_temporary_grant(self):
+        agent = PiAgent(Config(), temporary_grant_until=10**15)
+        exited = Mock()
+        exited.poll.return_value = 0
+        agent.process = exited
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
+                patch("ask_omar.agent.shutil.which", return_value="/usr/bin/pi"), \
+                patch("ask_omar.agent.subprocess.Popen") as popen:
+            popen.return_value = Mock()
+            agent.start()
+            environment = popen.call_args.kwargs["env"]
+            agent.log_handle.close()
+        self.assertEqual(agent.temporary_grant_until, 0)
+        self.assertEqual(environment["ASK_OMAR_GRANT_UNTIL"], "0")
 
     def test_stopping_pi_always_ends_a_temporary_grant(self):
         agent = PiAgent(Config(), temporary_grant_until=10**15)

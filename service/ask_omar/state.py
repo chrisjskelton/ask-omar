@@ -60,6 +60,11 @@ class StateStore:
         self.warning = message
         self._save_block = message
 
+    def _refuse_if_blocked(self) -> None:
+        """Fail before changing memory, so reads never show unsaved data."""
+        if self._save_block:
+            raise ValueError(self._save_block)
+
     def load(self) -> None:
         with self._lock:
             missing = False
@@ -179,11 +184,13 @@ class StateStore:
 
     def clear_history(self) -> None:
         with self._lock:
+            self._refuse_if_blocked()
             self.data["history"] = []
             self._save_unlocked()
 
     def set_draft(self, text: str) -> None:
         with self._lock:
+            self._refuse_if_blocked()
             if len(text) > self.max_draft_chars:
                 raise ValueError(f"Draft exceeds {self.max_draft_chars} characters.")
             value = text
@@ -203,6 +210,7 @@ class StateStore:
 
     def set_scratchpad(self, text: str) -> None:
         with self._lock:
+            self._refuse_if_blocked()
             if len(text) > self.max_scratchpad_chars:
                 raise ValueError(f"Scratchpad exceeds {self.max_scratchpad_chars} characters.")
             self.data["scratchpad"] = {"text": text, "at": time.time()}
@@ -217,6 +225,7 @@ class StateStore:
 
     def clear_scratchpad(self) -> None:
         with self._lock:
+            self._refuse_if_blocked()
             self.data["scratchpad"] = {"text": "", "at": time.time()}
             self._save_unlocked()
 
@@ -232,6 +241,7 @@ class StateStore:
 
     def save_scratchpad_notes(self, notes: list[str]) -> list[str]:
         with self._lock:
+            self._refuse_if_blocked()
             if len(notes) > self.max_scratchpad_notes:
                 raise ValueError(f"Scratchpad allows at most {self.max_scratchpad_notes} notes.")
             if not all(isinstance(note, str) for note in notes):

@@ -145,6 +145,8 @@ class AskOmar:
 
         blocked = self.query_blocked_by_agent_readiness()
         if blocked is not None:
+            # A failed request ends the conversation and any temporary grant.
+            self.agent.stop()
             return blocked
 
         prompt = self.agent_prompt(query)

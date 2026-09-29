@@ -170,6 +170,10 @@ class PiAgent:
         with self.lifecycle_lock:
             if self.process and self.process.poll() is None:
                 return
+            if self.process is not None:
+                # Pi exited on its own; the replacement is a new conversation,
+                # so the old temporary grant must not carry into it.
+                self.revoke_temporary_grant()
             log_path = state_home() / "agent.log"
             log_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(log_path.parent, 0o700)
