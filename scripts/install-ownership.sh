@@ -48,6 +48,35 @@ ask_omar_owns_app_directory() {
   fi
 }
 
+ask_omar_valid_app_manifest() {
+  local path=$1 hash relative extra
+  [[ -f $path && ! -L $path ]] || return 1
+  while IFS=$'\t' read -r hash relative extra || [[ -n ${hash}${relative}${extra} ]]; do
+    [[ $hash =~ ^[0-9a-f]{64}$ && -n $relative && -z $extra ]] || return 1
+    [[ $relative != /* && $relative != . && $relative != .. ]] || return 1
+    [[ $relative != */ && $relative != *//* ]] || return 1
+    [[ /$relative/ != *'/../'* && /$relative/ != *'/./'* ]] || return 1
+  done < "$path"
+}
+
+ask_omar_owns_plugin_file() {
+  local path=$1 relative=$2 root=$3
+  [[ -f $path && ! -L $path ]] || return 1
+  cmp -s "$path" "$root/$relative" && return 0
+  case "$relative" in
+    manifest.json)
+      ask_omar_matches_sha256 "$path" "5f55b563be14abe2e979f7da785554487b4875c5a7665596ae1c7e41e6f3c3b0" ||
+        ask_omar_matches_sha256 "$path" "21b9613934ba088b41fb0c56fde7b84e0e009de7e96bef60e2bdd6ada3140c2f" ||
+        ask_omar_matches_sha256 "$path" "8d3330d4bce61e084baf297b33dd71577815d86b1eb9cb7fd62ecf646b4a63ba"
+      ;;
+    plugin/AskOmar.qml)
+      ask_omar_matches_sha256 "$path" "3d6855a37cd779cc97af4e16d19e5bfa5c3eac50fd05b6b8f200afb53081d84b" ||
+        ask_omar_matches_sha256 "$path" "1dfa8a34fad656345fb1ab06b6a37b16950a247acaebb3625798c45be0c20e55"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 ask_omar_owns_file() {
   local path=$1 kind=$2 root=$3
   ask_omar_has_marker "$path" && return 0

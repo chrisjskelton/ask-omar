@@ -35,7 +35,7 @@ The installer checks dependencies before changing files. It does not request roo
 Read the permissions below first, then clone and inspect the release:
 
 ```bash
-# Copy the full commit from the v0.1.2 release notes:
+# Copy the full commit from the v0.1.3 release notes:
 ASK_OMAR_COMMIT=<full 40-character commit>
 git clone https://github.com/chrisjskelton/ask-omar.git
 cd ask-omar
@@ -59,16 +59,17 @@ First setup uses Pi's default provider/model, or the first model Pi lists. You c
 The repository contains a root plugin manifest. Omarchy can install the widget with:
 
 ```bash
-omarchy plugin add https://github.com/chrisjskelton/ask-omar.git --enable
+omarchy plugin add https://github.com/chrisjskelton/ask-omar.git --yes
 ```
 
-**One manual step is required:** the widget needs its Python companion service. Installing or enabling the widget never runs a setup script automatically. From the installed checkout:
+This clones and validates the plugin but deliberately leaves it disabled. Pin and verify the checkout before any plugin code is enabled, then install the Python companion service:
 
 ```bash
 cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
 ASK_OMAR_COMMIT=<full 40-character commit>
 git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
 make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
+omarchy plugin enable ask-omar.assistant
 ```
 
 Then run `ask-omar setup`. A marketplace listing is discovery, not a security certification. The plugin ID remains `ask-omar.assistant` for existing installations.
