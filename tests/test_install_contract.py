@@ -15,16 +15,17 @@ class InstallContractTests(unittest.TestCase):
         self.assertTrue((ROOT / manifest["entryPoints"]["barWidget"]).is_file())
         self.assertFalse((ROOT / "plugin/manifest.json").exists())
 
-    def test_make_targets_support_checkout_and_marketplace_setup(self):
+    def test_make_setup_is_the_only_install_target(self):
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         self.assertIn("omarchy plugin validate .", makefile)
-        self.assertIn("install: verify", makefile)
         self.assertIn("setup: verify", makefile)
-        install_recipe = makefile[makefile.index("install: verify"):makefile.index("setup: verify")]
         setup_recipe = makefile[makefile.index("setup: verify"):makefile.index("uninstall:")]
-        self.assertIn("$(MAKE) test", install_recipe)
         self.assertIn("$(MAKE) test", setup_recipe)
-        self.assertIn("./scripts/install.sh --backend-only", makefile)
+        self.assertIn("$(MAKE) validate", setup_recipe)
+        self.assertIn("./scripts/install.sh", setup_recipe)
+        install_recipe = makefile[makefile.index("\ninstall:"):makefile.index("setup: verify")]
+        self.assertIn("omarchy plugin add", install_recipe)
+        self.assertIn("exit 1", install_recipe)
 
     def test_capture_helper_and_launcher_are_packaged(self):
         helper = (ROOT / "scripts/capture.sh").read_text(encoding="utf-8")
@@ -58,17 +59,17 @@ class InstallContractTests(unittest.TestCase):
                     (ROOT / relative).read_text(encoding="utf-8"),
                 )
 
-    def test_readme_pins_a_full_detached_commit_for_each_install_route(self):
+    def test_readme_has_one_pinned_install_route(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotRegex(readme, r"git clone[^\n]*--branch")
         self.assertNotIn("plugin add https://github.com/chrisjskelton/ask-omar.git --enable", readme)
+        self.assertNotIn("make install ASK_OMAR_COMMIT", readme)
         checkout = 'git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"'
-        self.assertGreaterEqual(readme.count(checkout), 4)
-        self.assertIn('make install ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"', readme)
+        self.assertGreaterEqual(readme.count(checkout), 2)
         self.assertIn('make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"', readme)
-        setup = readme[readme.index("### Omarchy plugin installer / marketplace"):readme.index("## Permissions and the guard")]
-        self.assertLess(setup.index("checkout --detach"), setup.index("plugin enable ask-omar.assistant"))
-
+        install = readme[readme.index("## Install"):readme.index("## Permissions")]
+        self.assertIn("omarchy plugin add https://github.com/chrisjskelton/ask-omar.git", install)
+        self.assertLess(install.index("checkout --detach"), install.index("plugin enable ask-omar.assistant"))
 
 if __name__ == "__main__":
     unittest.main()

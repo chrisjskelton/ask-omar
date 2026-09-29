@@ -88,6 +88,13 @@ class InstallIntegrationTests(unittest.TestCase):
             ["git", "commit", "-qm", "fixture"], cwd=destination, check=True
         )
 
+    def make_legacy_copy(self, release="v0.1.3"):
+        (self.plugin / "plugin").mkdir(parents=True, exist_ok=True)
+        for relative in ("manifest.json", "plugin/AskOmar.qml"):
+            (self.plugin / relative).write_bytes(
+                subprocess.check_output(["git", "show", f"{release}:{relative}"], cwd=ROOT)
+            )
+
     def home_snapshot(self):
         snapshot = {}
         for path in sorted(self.home.rglob("*")):
@@ -105,16 +112,12 @@ class InstallIntegrationTests(unittest.TestCase):
         self.home.mkdir()
         self.log.unlink(missing_ok=True)
 
-    def test_full_install_update_and_uninstall_preserve_user_data(self):
-        self.run_script("install.sh")
-        manifest = json.loads((self.plugin / "manifest.json").read_text())
-        self.assertEqual(manifest["entryPoints"]["barWidget"], "plugin/AskOmar.qml")
-        self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
-        self.assertFalse((self.plugin / "AskOmar.qml").exists())
+    def test_setup_update_and_uninstall_preserve_user_data(self):
+        self.make_checkout(self.plugin)
+        self.run_script("install.sh", root=self.plugin)
         self.assertTrue((self.data / "ask-omar/service/ask_omar/__main__.py").is_file())
         self.assertTrue((self.home / ".local/bin/ask-omar").is_file())
-        self.assertIn(f"omarchy plugin validate {ROOT}", self.calls())
-        self.assertIn("omarchy plugin enable ask-omar.assistant --after omarchy.agents", self.calls())
+        self.assertNotIn("omarchy plugin enable", self.calls())
 
         config_file = self.config / "ask-omar/config.toml"
         guard_file = self.config / "ask-omar/guard.json"
@@ -126,29 +129,22 @@ class InstallIntegrationTests(unittest.TestCase):
         state_file.write_text("keep notes\n")
         app_file = self.data / "ask-omar/user-file.txt"
         nested_app_file = self.data / "ask-omar/service/ask_omar/user-file.txt"
-        plugin_file = self.plugin / "plugin/user-file.txt"
         app_file.write_text("keep app file\n")
         nested_app_file.write_text("keep nested app file\n")
-        plugin_file.write_text("keep plugin file\n")
-        self.run_script("install.sh")
+        self.run_script("install.sh", root=self.plugin)
         self.assertEqual(config_file.read_text(), "custom config\n")
         self.assertEqual(guard_file.read_text(), "custom guard\n")
         self.assertEqual(state_file.read_text(), "keep notes\n")
         self.assertEqual(app_file.read_text(), "keep app file\n")
         self.assertEqual(nested_app_file.read_text(), "keep nested app file\n")
-        self.assertEqual(plugin_file.read_text(), "keep plugin file\n")
-        self.assertEqual(
-            (self.plugin / "plugin/AskOmar.qml").read_bytes(),
-            (ROOT / "plugin/AskOmar.qml").read_bytes(),
-        )
         self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
-        self.run_script("uninstall.sh")
+        self.run_script("uninstall.sh", root=self.plugin)
         self.assertEqual(config_file.read_text(), "custom config\n")
         self.assertEqual(guard_file.read_text(), "custom guard\n")
         self.assertEqual(state_file.read_text(), "keep notes\n")
         self.assertEqual(app_file.read_text(), "keep app file\n")
         self.assertEqual(nested_app_file.read_text(), "keep nested app file\n")
-        self.assertEqual(plugin_file.read_text(), "keep plugin file\n")
+        self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
         self.assertIn("omarchy plugin disable ask-omar.assistant", self.calls())
 
     def test_clean_install_is_fully_removed(self):
@@ -171,12 +167,18 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertFalse((self.data / "ask-omar").exists())
         self.assertNotIn("omarchy plugin disable", self.calls())
 
-    def test_full_install_from_already_installed_marketplace_source(self):
+    def test_setup_never_copies_enables_or_restarts_the_widget(self):
         self.make_checkout(self.plugin)
-        self.run_script("install.sh", root=self.plugin)
+        result = self.run_script("install.sh", root=self.plugin)
         self.assertTrue((self.plugin / "manifest.json").is_file())
-        self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
-        self.assertIn("omarchy plugin enable ask-omar.assistant", self.calls())
+        self.assertNotIn("omarchy plugin enable", self.calls())
+        self.assertNotIn("omarchy-restart-shell", self.calls())
+        self.assertIn("omarchy plugin enable ask-omar.assistant", result.stdout)
+
+    def test_setup_without_a_widget_explains_how_to_add_it(self):
+        result = self.run_script("install.sh")
+        self.assertFalse(self.plugin.exists())
+        self.assertIn("omarchy plugin add https://github.com/chrisjskelton/ask-omar.git", result.stdout)
 
     def test_full_uninstall_leaves_marketplace_source_checkout(self):
         self.make_checkout(self.plugin)
@@ -186,7 +188,8 @@ class InstallIntegrationTests(unittest.TestCase):
 
         self.assertTrue((self.plugin / "manifest.json").is_file())
         self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
-        self.assertIn("Leaving marketplace checkout in place", result.stderr)
+        self.assertIn("Leaving the widget checkout in place", result.stderr)
+        self.assertIn("omarchy plugin remove ask-omar.assistant", result.stderr)
 
     def test_failed_runtime_preflight_leaves_targets_untouched(self):
         node = self.bin / "node"
@@ -228,10 +231,7 @@ class InstallIntegrationTests(unittest.TestCase):
             ("capture launcher", self.home / ".local/bin/ask-omar-capture", "file", "--backend-only"),
             ("desktop", self.data / "applications/ask-omar.desktop", "file", "--backend-only"),
             ("settings desktop", self.data / "applications/ask-omar-settings.desktop", "file", "--backend-only"),
-            ("plugin", self.plugin, "directory", None),
-            ("plugin directory", self.plugin / "plugin", "directory", None),
-            ("plugin manifest", self.plugin / "manifest.json", "file", None),
-            ("plugin qml", self.plugin / "plugin/AskOmar.qml", "file", None),
+            ("settings desktop without flag", self.data / "applications/ask-omar-settings.desktop", "file", None),
         )
         sentinels = Path(self.sandbox.name) / "sentinels"
         for name, destination, target_kind, mode in cases:
@@ -317,30 +317,22 @@ class InstallIntegrationTests(unittest.TestCase):
                 self.assertEqual(marker.read_text(), "# Installed by Ask Omar\n")
                 self.assertTrue((app / "service/ask_omar/__main__.py").is_file())
 
-    def test_exact_legacy_plugin_files_upgrade(self):
-        for release in ("v0.1.0", REVIEWED_COMMIT):
+    def test_legacy_copied_widget_is_left_by_setup_and_removed_by_uninstall(self):
+        for release in ("v0.1.0", REVIEWED_COMMIT, "v0.1.2", "v0.1.3"):
             with self.subTest(release=release):
                 self.reset_home()
-                (self.plugin / "plugin").mkdir(parents=True)
-                (self.plugin / "manifest.json").write_bytes(
-                    subprocess.check_output(["git", "show", f"{release}:manifest.json"], cwd=ROOT)
-                )
-                (self.plugin / "plugin/AskOmar.qml").write_bytes(
-                    subprocess.check_output(
-                        ["git", "show", f"{release}:plugin/AskOmar.qml"], cwd=ROOT
-                    )
-                )
+                self.make_legacy_copy(release)
+                before = (self.plugin / "plugin/AskOmar.qml").read_bytes()
 
-                self.run_script("install.sh")
+                result = self.run_script("install.sh")
 
-                self.assertEqual(
-                    (self.plugin / "manifest.json").read_bytes(),
-                    (ROOT / "manifest.json").read_bytes(),
-                )
-                self.assertEqual(
-                    (self.plugin / "plugin/AskOmar.qml").read_bytes(),
-                    (ROOT / "plugin/AskOmar.qml").read_bytes(),
-                )
+                self.assertEqual((self.plugin / "plugin/AskOmar.qml").read_bytes(), before)
+                self.assertIn("older Ask Omar widget copy", result.stderr)
+
+                self.run_script("uninstall.sh")
+
+                self.assertFalse(self.plugin.exists())
+                self.assertIn("omarchy plugin disable ask-omar.assistant", self.calls())
 
     def test_marketplace_symlink_to_checkout_is_allowed(self):
         self.plugin.parent.mkdir(parents=True)
@@ -349,7 +341,7 @@ class InstallIntegrationTests(unittest.TestCase):
         self.run_script("install.sh")
 
         self.assertTrue(self.plugin.is_symlink())
-        self.assertIn("omarchy plugin enable ask-omar.assistant", self.calls())
+        self.assertTrue((self.data / "ask-omar/service/ask_omar/__main__.py").is_file())
 
     def test_uninstall_preserves_unrecognized_symlink_targets(self):
         app_target = Path(self.sandbox.name) / "foreign-app"
@@ -423,7 +415,7 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertIn("without a valid managed-file manifest", result.stderr)
 
     def test_modified_and_unknown_plugin_files_survive_uninstall(self):
-        self.run_script("install.sh")
+        self.make_legacy_copy()
         qml = self.plugin / "plugin/AskOmar.qml"
         unknown = self.plugin / "plugin/keep.txt"
         qml.write_text("user-modified\n")
@@ -436,7 +428,7 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertIn("Leaving modified plugin file", result.stderr)
 
     def test_uninstall_never_follows_plugin_directory_symlinks(self):
-        self.run_script("install.sh")
+        self.make_legacy_copy()
         external_plugin = Path(self.sandbox.name) / "external-plugin"
         external_plugin.mkdir()
         external_qml = external_plugin / "AskOmar.qml"
@@ -450,16 +442,15 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertTrue(external_qml.is_file())
         self.assertIn("path containing a symlink", result.stderr)
 
-    def test_modified_plugin_file_blocks_upgrade_without_changes(self):
-        self.run_script("install.sh")
-        qml = self.plugin / "plugin/AskOmar.qml"
-        qml.write_text("user-modified\n")
-        before = self.home_snapshot()
+    def test_uninstall_from_another_checkout_leaves_the_widget_checkout(self):
+        self.make_checkout(self.plugin)
+        before = (self.plugin / "plugin/AskOmar.qml").read_bytes()
 
-        result = self.run_script("install.sh", success=False)
+        result = self.run_script("uninstall.sh")
 
-        self.assertIn("plugin file Ask Omar did not install", result.stderr)
-        self.assertEqual(self.home_snapshot(), before)
+        self.assertEqual((self.plugin / "plugin/AskOmar.qml").read_bytes(), before)
+        self.assertTrue((self.plugin / "manifest.json").is_file())
+        self.assertIn("Leaving the widget checkout in place", result.stderr)
 
     def test_foreign_launchers_block_install_and_survive_uninstall(self):
         for name in ("ask-omar", "ask-omar-open", "ask-omar-capture"):

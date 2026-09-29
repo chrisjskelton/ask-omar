@@ -73,14 +73,20 @@ if ask_omar_owns_file "$SERVICE_TARGET" service "$ROOT"; then
   systemctl --user disable --now ask-omar.service 2>/dev/null || true
 fi
 
-plugin_is_source=0
+# The widget is normally a Git checkout made by `omarchy plugin add`; it is
+# disabled and left for `omarchy plugin remove`. Only a pre-0.1.4 copied widget
+# has files for this script to remove.
+plugin_is_checkout=0
+plugin_is_legacy_copy=0
 plugin_owned=0
 if [[ $mode == full && ( -d $PLUGIN_TARGET || -L $PLUGIN_TARGET ) ]] &&
-    [[ $(readlink -f -- "$PLUGIN_TARGET") == $(readlink -f -- "$ROOT") ]]; then
-  plugin_is_source=1
+    { [[ $(readlink -f -- "$PLUGIN_TARGET") == $(readlink -f -- "$ROOT") ]] ||
+      [[ ! -L $PLUGIN_TARGET && -e $PLUGIN_TARGET/.git ]]; }; then
+  plugin_is_checkout=1
   plugin_owned=1
-elif [[ $mode == full && -d $PLUGIN_TARGET && ! -L $PLUGIN_TARGET ]] &&
+elif [[ $mode == full ]] && ask_omar_is_legacy_plugin_copy "$PLUGIN_TARGET" &&
     ask_omar_owns_plugin_file "$PLUGIN_TARGET/manifest.json" manifest.json "$ROOT"; then
+  plugin_is_legacy_copy=1
   plugin_owned=1
 fi
 
@@ -119,9 +125,10 @@ elif [[ -e $APP_TARGET || -L $APP_TARGET ]]; then
 fi
 
 if [[ $mode == full && ( -e $PLUGIN_TARGET || -L $PLUGIN_TARGET ) ]]; then
-  if (( plugin_is_source )); then
-    echo "Leaving marketplace checkout in place: $PLUGIN_TARGET" >&2
-  elif [[ -d $PLUGIN_TARGET && ! -L $PLUGIN_TARGET ]]; then
+  if (( plugin_is_checkout )); then
+    echo "Leaving the widget checkout in place: $PLUGIN_TARGET" >&2
+    echo "Remove it with: omarchy plugin remove ask-omar.assistant" >&2
+  elif (( plugin_is_legacy_copy )) || [[ -d $PLUGIN_TARGET && ! -L $PLUGIN_TARGET && ! -e $PLUGIN_TARGET/.git ]]; then
     remove_owned_plugin_file manifest.json
     remove_owned_plugin_file plugin/AskOmar.qml
     rmdir -- "$PLUGIN_TARGET/plugin" 2>/dev/null || true

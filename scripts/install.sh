@@ -18,10 +18,11 @@ GUARD_SOURCE="$ROOT/service/ask_omar/extensions/ask-omar-guard.ts"
 GUARD_TARGET="$APP_TARGET/extensions/ask-omar-guard.ts"
 APP_MANIFEST_NAME=.installed-files.sha256
 
-mode=${1:-full}
-case "$mode" in
-  full) [[ $# -eq 0 ]] || { echo "Usage: $0 [--backend-only]" >&2; exit 2; } ;;
-  --backend-only) [[ $# -eq 1 ]] || { echo "Usage: $0 [--backend-only]" >&2; exit 2; } ;;
+# The widget is the Omarchy plugin checkout itself (omarchy plugin add), so this
+# script installs only the companion backend. --backend-only is accepted for
+# older instructions and means the same thing.
+case "$#:${1:-}" in
+  0: | 1:--backend-only) ;;
   *) echo "Usage: $0 [--backend-only]" >&2; exit 2 ;;
 esac
 
@@ -51,9 +52,6 @@ for program in git python node readlink sha256sum systemctl tar omarchy-shell \
   omarchy-capture-region omarchy-notification-send wl-copy grim jq pgrep xdg-open; do
   require_command "$program"
 done
-if [[ $mode == full ]]; then
-  for program in omarchy omarchy-restart-shell; do require_command "$program"; done
-fi
 
 refuse_symlink() {
   local path=$1
@@ -67,15 +65,6 @@ require_owned_file() {
   [[ -f $path ]] || fail "refusing to replace non-file destination: $path"
   ask_omar_owns_file "$path" "$kind" "$ROOT" ||
     fail "refusing to replace a file Ask Omar did not install: $path"
-}
-
-require_owned_plugin_file() {
-  local path=$1 relative=$2
-  [[ ! -e $path && ! -L $path ]] && return 0
-  refuse_symlink "$path"
-  [[ -f $path ]] || fail "refusing to replace non-file plugin destination: $path"
-  ask_omar_owns_plugin_file "$path" "$relative" "$ROOT" ||
-    fail "refusing to replace a plugin file Ask Omar did not install: $path"
 }
 
 # Complete destination preflight before invoking tools that may create state.
@@ -97,30 +86,6 @@ require_owned_file "$BIN_HOME/ask-omar-capture" capture
 require_owned_file "$SERVICE_TARGET" service
 require_owned_file "$DESKTOP_TARGET" desktop
 require_owned_file "$SETTINGS_DESKTOP_TARGET" settings-desktop
-
-ROOT_REAL=$(readlink -f -- "$ROOT")
-PLUGIN_IS_SOURCE=0
-if [[ $mode == full ]]; then
-  if [[ -e $PLUGIN_TARGET || -L $PLUGIN_TARGET ]]; then
-    if [[ -d $PLUGIN_TARGET && $(readlink -f -- "$PLUGIN_TARGET") == "$ROOT_REAL" ]]; then
-      PLUGIN_IS_SOURCE=1
-    elif [[ -L $PLUGIN_TARGET ]]; then
-      fail "refusing to replace plugin symlink: $PLUGIN_TARGET"
-    elif [[ ! -d $PLUGIN_TARGET ]]; then
-      fail "plugin destination is not a directory: $PLUGIN_TARGET"
-    fi
-  fi
-
-  if [[ $PLUGIN_IS_SOURCE -eq 0 ]]; then
-    for path in \
-      "$PLUGIN_TARGET/plugin" "$PLUGIN_TARGET/manifest.json" \
-      "$PLUGIN_TARGET/plugin/AskOmar.qml"; do
-      refuse_symlink "$path"
-    done
-    require_owned_plugin_file "$PLUGIN_TARGET/manifest.json" manifest.json
-    require_owned_plugin_file "$PLUGIN_TARGET/plugin/AskOmar.qml" plugin/AskOmar.qml
-  fi
-fi
 
 if [[ -L $CONFIG_TARGET ]]; then
   echo "Leaving symlinked config unchanged: $CONFIG_TARGET" >&2
@@ -146,10 +111,6 @@ if ! node "$ts_probe" >/dev/null 2>&1; then
 fi
 rm -f "$ts_probe"
 trap - EXIT
-
-if [[ $mode == full ]]; then
-  omarchy plugin validate "$ROOT"
-fi
 
 # Inspect Pi's local help only. This avoids invoking a provider, logging in,
 # or relying on a version number to infer option support.
@@ -258,14 +219,6 @@ done < <(find "$STAGE_ROOT/ask-omar" -type f -print0)
 install -T -m 644 \
   "$STAGE_ROOT/ask-omar/$APP_MANIFEST_NAME" "$APP_TARGET/$APP_MANIFEST_NAME"
 
-# A marketplace checkout may itself be the installed target. Keep it intact;
-# otherwise install just the runtime plugin files.
-if [[ $mode == full && $PLUGIN_IS_SOURCE -eq 0 ]]; then
-  install -d "$PLUGIN_TARGET/plugin"
-  install -T -m 644 "$ROOT/manifest.json" "$PLUGIN_TARGET/manifest.json"
-  install -T -m 644 "$ROOT/plugin/AskOmar.qml" "$PLUGIN_TARGET/plugin/AskOmar.qml"
-fi
-
 if [[ ! -e $CONFIG_TARGET && ! -L $CONFIG_TARGET ]]; then
   if [[ -L $(dirname "$CONFIG_TARGET") ]]; then
     echo "Using symlinked config directory: $(dirname "$CONFIG_TARGET")" >&2
@@ -295,15 +248,15 @@ install -T -m 644 "$ROOT/desktop/ask-omar-settings.desktop" "$SETTINGS_DESKTOP_T
 systemctl --user daemon-reload
 systemctl --user enable ask-omar.service >/dev/null
 systemctl --user restart ask-omar.service
-if [[ $mode == full ]]; then
-  omarchy plugin validate "$PLUGIN_TARGET"
-  omarchy plugin enable ask-omar.assistant --after omarchy.agents
-  # An existing QML instance may still be running the previous version.
-  omarchy-restart-shell
-fi
 
 echo "Ask Omar backend installed."
-if [[ $mode == full ]]; then echo "Ask Omar plugin installed and enabled."; fi
 printf '%s\n' "$pi_status"
-echo "Check it with: ask-omar setup"
-echo "Open it from the Omarchy app menu, or run: omarchy-shell ask-omar open"
+if ask_omar_is_legacy_plugin_copy "$PLUGIN_TARGET"; then
+  echo "An older Ask Omar widget copy is still installed at $PLUGIN_TARGET." >&2
+  echo "Run make uninstall, then install the widget with omarchy plugin add (see README)." >&2
+elif [[ ! -d $PLUGIN_TARGET ]]; then
+  echo "Install the widget with: omarchy plugin add https://github.com/chrisjskelton/ask-omar.git"
+else
+  echo "If the widget is not enabled yet, run: omarchy plugin enable ask-omar.assistant"
+fi
+echo "Check the AI connection with: ask-omar setup"

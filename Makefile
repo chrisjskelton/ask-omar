@@ -11,14 +11,17 @@ test:
 validate:
 	omarchy plugin validate .
 
-install: verify
-	$(MAKE) test
-	$(MAKE) validate
-	./scripts/install.sh
+# Since 0.1.4 the widget is installed with `omarchy plugin add`, and this
+# checkout only sets up the companion backend. See README.md#install.
+install:
+	@echo "Ask Omar installs with: omarchy plugin add https://github.com/chrisjskelton/ask-omar.git" >&2
+	@echo "Then run make setup in the plugin folder. See README.md#install." >&2
+	@exit 1
 
 setup: verify
 	$(MAKE) test
-	./scripts/install.sh --backend-only
+	$(MAKE) validate
+	./scripts/install.sh
 
 uninstall:
 	./scripts/uninstall.sh

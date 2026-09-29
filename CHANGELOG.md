@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.4 — One install route and safer notes
+
+- Ask Omar now installs one way: `omarchy plugin add` from GitHub, then `make setup` in the plugin folder. `make install` no longer copies the widget, which removes the upgrade path that would have refused future releases. Older copied widgets are detected and removed by `make uninstall`.
+- `make uninstall` never deletes files from a widget checkout; remove the checkout with `omarchy plugin remove`.
+- An unreadable, oversized or unrecognised saved-state file is kept as `state.json.unreadable-…` instead of being overwritten, and Scratchpad says so. If it can't be moved aside, saves are refused rather than overwriting it.
+- The widget detects when it and the background service are different versions (for example after `omarchy plugin update`) and asks you to run `make setup`.
+- Questions reuse a successful Pi sign-in check for up to 10 minutes instead of running `pi auth check` and scanning installed apps every time.
+- Only requests that ask for a Google or web search open Google. “search my Downloads for …” now goes to Omar.
+- Ask for Recognized Risks no longer offers “Allow for 15 minutes”, which had no effect in that mode.
+- The idle conversation reset now also ends a temporary command grant.
+- Removed unused action matching, app discovery and usage scoring, and stopped telling the AI about buttons that no longer exist.
+- Documentation now states that the high-risk prompt is a warning rather than a boundary, explains what Pi does, and lists everything that ends a temporary grant. The unpublished `docs/` product page and old demo were removed.
+
 ## 0.1.3 — Safe managed lifecycle
 
 - Upgrades update managed application files without deleting unknown nested files.

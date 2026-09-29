@@ -8,10 +8,11 @@ backend = "pi"
 provider = ""
 model = ""
 thinking = "low"
-# ask: show each command, with an optional grant for this question (default)
-# off: do not offer model-generated command execution
-# full: run routine commands automatically; ask about recognized high-risk commands
-# unrestricted: run every command without asking; dangerous and not recommended
+# Settings → Safety names in brackets.
+# ask: show each command; optionally allow routine commands for 15 minutes [Ask First] (default)
+# off: no model-generated shell commands; read-only file tools remain [Block Commands]
+# full: run routine commands automatically; ask about recognized high-risk commands [Ask for Recognized Risks]
+# unrestricted: run every command without asking; dangerous [Always Allow — Dangerous]
 system_access = "ask"
 timeout_seconds = 90
 

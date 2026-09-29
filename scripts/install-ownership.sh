@@ -59,6 +59,9 @@ ask_omar_valid_app_manifest() {
   done < "$path"
 }
 
+# Before 0.1.4, `make install` copied the widget into Omarchy's plugin folder.
+# Since 0.1.4 the plugin folder is always a Git checkout, so this list of the
+# copied releases (0.1.0-0.1.3) is complete and never needs new entries.
 ask_omar_owns_plugin_file() {
   local path=$1 relative=$2 root=$3
   [[ -f $path && ! -L $path ]] || return 1
@@ -67,7 +70,8 @@ ask_omar_owns_plugin_file() {
     manifest.json)
       ask_omar_matches_sha256 "$path" "5f55b563be14abe2e979f7da785554487b4875c5a7665596ae1c7e41e6f3c3b0" ||
         ask_omar_matches_sha256 "$path" "21b9613934ba088b41fb0c56fde7b84e0e009de7e96bef60e2bdd6ada3140c2f" ||
-        ask_omar_matches_sha256 "$path" "8d3330d4bce61e084baf297b33dd71577815d86b1eb9cb7fd62ecf646b4a63ba"
+        ask_omar_matches_sha256 "$path" "8d3330d4bce61e084baf297b33dd71577815d86b1eb9cb7fd62ecf646b4a63ba" ||
+        ask_omar_matches_sha256 "$path" "d237b1ab2f45f6bbed065251403f2c4ca1128ae389f185261e5c8f47832dee0a"
       ;;
     plugin/AskOmar.qml)
       ask_omar_matches_sha256 "$path" "3d6855a37cd779cc97af4e16d19e5bfa5c3eac50fd05b6b8f200afb53081d84b" ||
@@ -92,4 +96,11 @@ ask_omar_owns_file() {
     settings-desktop) ask_omar_matches_source_without_marker "$path" "$root/desktop/ask-omar-settings.desktop" ;;
     *) return 1 ;;
   esac
+}
+
+# A pre-0.1.4 copied widget: an ordinary plugin directory, not a Git checkout.
+ask_omar_is_legacy_plugin_copy() {
+  local path=$1
+  [[ -d $path && ! -L $path && ! -e $path/.git ]] || return 1
+  [[ -f $path/manifest.json ]] && grep -q '"ask-omar.assistant"' "$path/manifest.json"
 }

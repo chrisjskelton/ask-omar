@@ -20,13 +20,14 @@ make test
 make validate
 ```
 
-The root `manifest.json` is the marketplace entry point. `make setup` installs
-only the companion backend for a marketplace checkout; `make install` also
-installs and enables the widget. The test suite includes fake-command install,
-update and removal checks, so it does not change your desktop.
+The root `manifest.json` is the plugin entry point. The widget is installed with
+`omarchy plugin add`, which makes the plugin folder a Git checkout; `make setup`
+in that folder installs the companion backend. To try local changes, commit them,
+run `omarchy plugin add /path/to/your/ask-omar`, then in the plugin folder run
+`make setup ASK_OMAR_COMMIT=$(git rev-parse HEAD)`. The test suite includes
+fake-command install, update and removal checks, so it does not change your desktop.
 
-The standalone release preview lives in `docs/`. Preview it with
-`python -m http.server 8000 --directory docs`. The production page at
-https://aboutme.md/ask-omar is an Astro route in the private `aboutme.md`
-repository, deployed to the existing VPS static root. See [release ownership](docs/RELEASING.md).
-Record demo media with invented data and review every frame for private content.
+The public product page at https://aboutme.md/ask-omar is an Astro route in the
+private `aboutme.md` repository, deployed to the existing VPS static root. See
+[release ownership](docs/RELEASING.md). Record demo media with invented data and
+review every frame for private content.
