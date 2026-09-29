@@ -35,7 +35,7 @@ The installer checks dependencies before changing files. It does not request roo
 Read the permissions below first, then clone and inspect the release:
 
 ```bash
-# Copy the full commit from the v0.1.2 release notes:
+# Copy the full commit from the v0.1.3 release notes:
 ASK_OMAR_COMMIT=<full 40-character commit>
 git clone https://github.com/chrisjskelton/ask-omar.git
 cd ask-omar

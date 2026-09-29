@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 — Safe managed lifecycle
+
+- Upgrades update managed application files without deleting unknown nested files.
+- Uninstall removes only unchanged files recorded by Ask Omar and preserves modified or unknown content.
+- Managed removal refuses path traversal and never follows nested symlinks.
+- Plugin upgrades and removal preserve modified files, unknown files and marketplace source checkouts.
+- Marketplace setup pins the full release commit before enabling the plugin.
+
 ## 0.1.2 — Verified installation
 
 - Installation requires the full release commit and refuses a modified checkout.
