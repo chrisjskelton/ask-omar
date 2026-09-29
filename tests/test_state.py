@@ -67,16 +67,9 @@ class StateStoreTests(unittest.TestCase):
             state_dir = Path(directory) / "ask-omar"
             state_dir.mkdir(mode=0o755)
             path = state_dir / "state.json"
-            StateStore(path).record_action("capture.region")
+            StateStore(path).set_draft("private")
             self.assertEqual(state_dir.stat().st_mode & 0o777, 0o700)
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-
-    def test_recent_actions_raise_score(self):
-        with tempfile.TemporaryDirectory() as directory:
-            store = StateStore(Path(directory) / "state.json")
-            before = store.score("capture.region", 5)
-            store.record_action("capture.region")
-            self.assertGreater(store.score("capture.region", 5), before)
 
     def test_draft_survives_reload(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -127,7 +120,7 @@ class StateStoreTests(unittest.TestCase):
             store = StateStore(path, history_limit=0)
             self.assertEqual(store.history(), [])
             store.add_history("new", "answer", "assistant")
-            store.record_action("example")
+            store.set_draft("still saved")
             self.assertEqual(StateStore(path).history(), [])
 
     def test_malformed_state_collections_are_ignored(self):
@@ -137,7 +130,60 @@ class StateStoreTests(unittest.TestCase):
             store = StateStore(path)
             self.assertEqual(store.history(), [])
             self.assertEqual(store.draft(), "")
-            store.record_action("example")
+            store.set_draft("example")
+            self.assertEqual(StateStore(path).draft(), "example")
+
+    def assert_set_aside(self, path: Path, contents: bytes) -> StateStore:
+        path.write_bytes(contents)
+        store = StateStore(path)
+        kept = list(path.parent.glob("state.json.unreadable-*"))
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0].read_bytes(), contents)
+        self.assertEqual(kept[0].stat().st_mode & 0o777, 0o600)
+        self.assertIn(kept[0].name, store.warning)
+        self.assertEqual(store.scratchpad_notes(), [""])
+        # New saves write a fresh file and never touch the kept copy.
+        store.save_scratchpad_notes(["new note"])
+        self.assertEqual(kept[0].read_bytes(), contents)
+        self.assertEqual(StateStore(path).scratchpad_notes(), ["new note"])
+        return store
+
+    def test_unreadable_json_is_kept_instead_of_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assert_set_aside(Path(directory) / "state.json", b'{"version": 1, "scratchpad_notes": ["half')
+
+    def test_invalid_utf8_is_kept_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assert_set_aside(Path(directory) / "state.json", b'{"version": 1, "draft": "\xff\xfe"}')
+
+    def test_unknown_state_version_is_kept_instead_of_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            self.assert_set_aside(Path(directory) / "state.json", b'{"version": 2, "scratchpad_notes": ["future"]}')
+
+    def test_oversized_state_is_kept_instead_of_overwritten(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            with patch.object(StateStore, "max_state_bytes", 400):
+                self.assert_set_aside(path, b'{"version": 1, "scratchpad_notes": ["' + b"x" * 500 + b'"]}')
+
+    def test_state_that_cannot_be_read_or_moved_blocks_saves(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text('{"version": 1, "scratchpad_notes": ["keep"]}')
+            with patch.object(Path, "read_text", side_effect=PermissionError(13, "Permission denied")):
+                store = StateStore(path)
+            self.assertIn("could not read", store.warning)
+            with self.assertRaises(ValueError):
+                store.save_scratchpad_notes(["would overwrite"])
+            store.add_history("question", "answer", "assistant")
+            self.assertEqual(json.loads(path.read_text())["scratchpad_notes"], ["keep"])
+
+    def test_readable_state_has_no_warning(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            StateStore(path).save_scratchpad_notes(["fine"])
+            self.assertEqual(StateStore(path).warning, "")
+            self.assertEqual(list(Path(directory).glob("*.unreadable-*")), [])
 
     def test_scratchpad_can_be_cleared(self):
         with tempfile.TemporaryDirectory() as directory:

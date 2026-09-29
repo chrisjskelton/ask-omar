@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import tempfile
 import threading
@@ -22,46 +21,72 @@ class StateStore:
     def __init__(self, path: Path, history_limit: int = 10):
         self.path = path
         self.history_limit = history_limit
-        self.data: dict[str, Any] = {"version": 1, "events": [], "history": []}
+        self.data: dict[str, Any] = {"version": 1, "history": []}
+        self.warning = ""
+        self._save_block = ""
         self._lock = threading.RLock()
         self.load()
 
+    def _set_aside(self, problem: str) -> None:
+        """Keep an unusable state file instead of overwriting it with empty data."""
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        kept = self.path.with_name(f"{self.path.name}.unreadable-{stamp}")
+        try:
+            os.replace(self.path, kept)
+            os.chmod(kept, 0o600)
+        except OSError as error:
+            self._block_saves(
+                f"Ask Omar's saved notes file {problem} and could not be moved aside "
+                f"({error.strerror or error}). Nothing was overwritten."
+            )
+            return
+        self.warning = (
+            f"Ask Omar's saved notes file {problem}. It was kept as {kept.name} "
+            "and Ask Omar started with empty notes and history."
+        )
+
+    def _block_saves(self, message: str) -> None:
+        self.warning = message
+        self._save_block = message
+
     def load(self) -> None:
         with self._lock:
+            raw: Any = None
             try:
                 if self.path.stat().st_size > self.max_state_bytes:
+                    self._set_aside("is larger than Ask Omar's storage limit")
                     return
-                raw = json.loads(self.path.read_text())
-                if isinstance(raw, dict) and raw.get("version") == 1:
-                    for key in ("events", "history"):
-                        value = raw.get(key)
-                        if isinstance(value, list):
-                            if key == "events":
-                                self.data[key] = [
-                                    item for item in value
-                                    if isinstance(item, dict)
-                                    and isinstance(item.get("action"), str)
-                                    and isinstance(item.get("at"), (int, float))
-                                ]
-                            else:
-                                self.data[key] = [
-                                    item for item in value
-                                    if isinstance(item, dict)
-                                    and all(isinstance(item.get(field), str) for field in ("query", "response", "kind"))
-                                ]
-                    for key in ("draft", "scratchpad"):
-                        value = raw.get(key)
-                        if value is None or (
-                            isinstance(value, dict)
-                            and isinstance(value.get("text"), str)
-                            and isinstance(value.get("at"), (int, float))
-                        ):
-                            self.data[key] = value
-                    notes = raw.get("scratchpad_notes")
-                    if isinstance(notes, list) and all(isinstance(note, str) for note in notes):
-                        self.data["scratchpad_notes"] = notes[: self.max_scratchpad_notes]
-            except (FileNotFoundError, json.JSONDecodeError, OSError):
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
                 pass
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._set_aside("could not be read")
+                return
+            except OSError as error:
+                self._block_saves(f"Ask Omar could not read its saved notes ({error.strerror or error}).")
+                return
+            if raw is not None and not (isinstance(raw, dict) and raw.get("version") == 1):
+                self._set_aside("is in a format this version does not recognise")
+                return
+            if isinstance(raw, dict):
+                history = raw.get("history")
+                if isinstance(history, list):
+                    self.data["history"] = [
+                        item for item in history
+                        if isinstance(item, dict)
+                        and all(isinstance(item.get(field), str) for field in ("query", "response", "kind"))
+                    ]
+                for key in ("draft", "scratchpad"):
+                    value = raw.get(key)
+                    if value is None or (
+                        isinstance(value, dict)
+                        and isinstance(value.get("text"), str)
+                        and isinstance(value.get("at"), (int, float))
+                    ):
+                        self.data[key] = value
+                notes = raw.get("scratchpad_notes")
+                if isinstance(notes, list) and all(isinstance(note, str) for note in notes):
+                    self.data["scratchpad_notes"] = notes[: self.max_scratchpad_notes]
             if self.history_limit <= 0:
                 had_history = bool(self.data["history"])
                 self.data["history"] = []
@@ -75,6 +100,8 @@ class StateStore:
             self._save_unlocked()
 
     def _save_unlocked(self) -> None:
+        if self._save_block:
+            raise ValueError(self._save_block)
         self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.path.parent, 0o700)
         # Use the same byte ceiling on save and load. Large multibyte answers
@@ -116,18 +143,11 @@ class StateStore:
             except FileNotFoundError:
                 pass
 
-    def record_action(self, action_id: str) -> None:
-        with self._lock:
-            now = time.time()
-            events = self.data.setdefault("events", [])
-            events.append({"action": action_id, "at": now})
-            cutoff = now - 90 * 86400
-            self.data["events"] = [event for event in events if event.get("at", 0) >= cutoff][-1000:]
-            self._save_unlocked()
-
     def add_history(self, query: str, response: str, kind: str) -> None:
         with self._lock:
-            if self.history_limit <= 0:
+            # Answer history is optional. When saving is blocked, keep the
+            # answer flowing instead of failing the request.
+            if self.history_limit <= 0 or self._save_block:
                 return
             history = self.data.setdefault("history", [])
             history.insert(0, {
@@ -211,14 +231,3 @@ class StateStore:
             self.data["scratchpad"] = {"text": bounded[0], "at": time.time()}
             self._save_unlocked()
             return list(bounded)
-
-    def score(self, action_id: str, base: float = 0.0) -> float:
-        with self._lock:
-            now = time.time()
-            score = base
-            for event in self.data.get("events", []):
-                if event.get("action") != action_id:
-                    continue
-                age_days = max(0.0, (now - float(event.get("at", now))) / 86400)
-                score += 4.0 * math.exp(-age_days / 14.0)
-            return score
