@@ -152,6 +152,17 @@ class StateStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             self.assert_set_aside(Path(directory) / "state.json", b'{"version": 1, "scratchpad_notes": ["half')
 
+    def test_repeated_recovery_never_replaces_an_earlier_kept_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            with patch("ask_omar.state.time.strftime", return_value="20260101-000000"):
+                for contents in (b"first broken", b"second broken", b"third broken"):
+                    path.write_bytes(contents)
+                    StateStore(path)
+            kept = sorted(p.read_bytes() for p in Path(directory).glob("state.json.unreadable-*"))
+            self.assertEqual(kept, [b"first broken", b"second broken", b"third broken"])
+            self.assertFalse(path.exists())
+
     def test_invalid_utf8_is_kept_instead_of_crashing(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assert_set_aside(Path(directory) / "state.json", b'{"version": 1, "draft": "\xff\xfe"}')

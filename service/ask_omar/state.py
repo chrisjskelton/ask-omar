@@ -30,9 +30,20 @@ class StateStore:
     def _set_aside(self, problem: str) -> None:
         """Keep an unusable state file instead of overwriting it with empty data."""
         stamp = time.strftime("%Y%m%d-%H%M%S")
-        kept = self.path.with_name(f"{self.path.name}.unreadable-{stamp}")
         try:
-            os.replace(self.path, kept)
+            # Link under a new name, then drop the original. os.link never
+            # replaces an existing file, so an earlier kept copy is never lost.
+            for attempt in range(1000):
+                suffix = f"-{attempt}" if attempt else ""
+                kept = self.path.with_name(f"{self.path.name}.unreadable-{stamp}{suffix}")
+                try:
+                    os.link(self.path, kept)
+                    break
+                except FileExistsError:
+                    continue
+            else:
+                raise FileExistsError(f"too many kept copies named {kept.name}")
+            os.unlink(self.path)
             os.chmod(kept, 0o600)
         except OSError as error:
             self._block_saves(
