@@ -13,8 +13,10 @@ class VersionTests(unittest.TestCase):
         manifest = json.loads(
             (Path(__file__).parents[1] / "manifest.json").read_text()
         )
-        self.assertEqual(__version__, "0.1.3")
+        self.assertEqual(__version__, "0.1.4")
         self.assertEqual(manifest["version"], __version__)
+        qml = (Path(__file__).parents[1] / "plugin" / "AskOmar.qml").read_text()
+        self.assertIn(f'readonly property string widgetVersion: "{__version__}"', qml)
 
         output = io.StringIO()
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as stopped:

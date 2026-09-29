@@ -291,6 +291,10 @@ class GuardExtensionTests(unittest.TestCase):
             self.assertIn("High-risk command", prompt["title"])
             self.assertIn("Command denied", result["error"])
 
+    def test_high_risk_only_mode_offers_no_temporary_grant(self):
+        payload = run_broker(["sudo true"], mode="full", choices=["Deny"])
+        self.assertEqual(payload["prompts"][0]["options"], ["Allow once", "Deny"])
+
     def test_unrestricted_mode_does_not_prompt_for_recognized_high_risk_text(self):
         command = "printf '%s' 'sudo true'"
         payload = run_broker([command], mode="unrestricted", has_ui=False)

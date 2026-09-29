@@ -491,10 +491,12 @@ export default function (pi: ExtensionAPI) {
         const title = risk
           ? `High-risk command: this could ${risk.description}\nCommand: ${command}`
           : `Omar wants to run this shell command\nCommand: ${command}`;
-        const choice = await ctx.ui.select(
-          title,
-          ["Allow once", "Allow for 15 minutes", "Deny"],
-        );
+        // A temporary grant only changes anything in Ask First, where routine
+        // commands otherwise ask. Other modes offer a single approval.
+        const options = mode === "ask"
+          ? ["Allow once", "Allow for 15 minutes", "Deny"]
+          : ["Allow once", "Deny"];
+        const choice = await ctx.ui.select(title, options);
         if (choice === "Allow for 15 minutes") {
           temporaryGrantUntil = Date.now() + temporaryGrantMs();
         } else if (choice !== "Allow once") {

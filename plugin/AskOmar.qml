@@ -91,6 +91,10 @@ BarWidget {
   property bool copyFailed: false
   property string micState: "idle"
   property bool voxtypeAvailable: true
+  // Must match manifest.json and the service's __version__ (tests enforce it).
+  readonly property string widgetVersion: "0.1.4"
+  property string serviceVersion: ""
+  property string stateWarning: ""
   property string healthStatus: "unknown"
   property string healthMessage: ""
   property string healthProvider: ""
@@ -1285,6 +1289,7 @@ BarWidget {
     try {
       var result = JSON.parse(String(raw || "").trim())
       if (!result.ok) return
+      stateWarning = String(result.warning || "")
       if (scratchpadVersion !== 0) return
       restoringScratchpad = true
       scratchpadNotes = result.notes || [""]
@@ -1566,7 +1571,9 @@ BarWidget {
         return
       }
       var agent = result.agent || {}
-      healthStatus = String(agent.status || "error")
+      serviceVersion = String(result.version || "")
+      if (result.state_warning) stateWarning = String(result.state_warning)
+      healthStatus = serviceVersion !== widgetVersion ? "update" : String(agent.status || "error")
       healthMessage = String(agent.message || "")
       healthProvider = String(result.provider || "")
       healthModel = String(result.model || "")
@@ -1578,6 +1585,11 @@ BarWidget {
       healthStatus = "error"
       healthMessage = "Ask Omar couldn't read the AI connection check."
     }
+  }
+
+  function confirmationOffers(option) {
+    var options = pendingConfirmation ? pendingConfirmation.options : null
+    return !!options && Array.prototype.indexOf.call(options, option) >= 0
   }
 
   function aiUnavailable() {
@@ -1597,6 +1609,7 @@ BarWidget {
     if (healthStatus === "configure") return "Choose a model in Settings"
     if (healthStatus === "missing") return "Pi is needed for AI requests"
     if (healthStatus === "checking") return "Checking the AI connection…"
+    if (healthStatus === "update") return "Finish updating Ask Omar"
     return "AI connection needs attention"
   }
 
@@ -1610,6 +1623,10 @@ BarWidget {
     if (healthStatus === "missing")
       return "Ask Omar couldn't find Pi, the separate app that runs its AI requests. Install it from https://pi.dev, then check again. Scratchpad and capture are available now."
     if (healthStatus === "checking") return "Looking for Pi and local provider credentials."
+    if (healthStatus === "update")
+      return "The Ask Omar widget (" + widgetVersion + ") and its background service ("
+        + (serviceVersion !== "" ? serviceVersion : "older version")
+        + ") don't match. In Ask Omar's plugin folder, check out the release commit and run make setup, then check again."
     return healthMessage !== "" ? healthMessage : "Ask Omar couldn't check Pi. Scratchpad and capture are still available."
   }
 
@@ -3891,7 +3908,9 @@ BarWidget {
               Text {
                 textFormat: Text.PlainText
                 width: parent.width
-                text: "Allow once runs only this command. Allow for 15 minutes covers routine commands in your next requests; high-risk commands still ask."
+                text: root.confirmationOffers("Allow for 15 minutes")
+                  ? "Allow once runs only this command. Allow for 15 minutes covers routine commands in your next requests; high-risk commands still ask."
+                  : "Allow once runs only this command. Omar will ask again next time."
                 wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.5)
                 font.family: root.bar ? root.bar.fontFamily : Style.font.family
@@ -3930,6 +3949,7 @@ BarWidget {
               }
 
               Button {
+                visible: root.confirmationOffers("Allow for 15 minutes")
                 text: "Allow for 15 minutes"
                 focusable: true
                 bordered: true
@@ -4479,11 +4499,12 @@ BarWidget {
           text: !root.backendInstalled
             ? "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
             : root.scratchpadSaveState === "error" ? root.scratchpadSaveError
+            : root.stateWarning !== "" ? root.stateWarning
             : root.quitRequested ? "Saving before quit…"
             : root.scratchpadSaveState === "pending" ? "Scratchpad save pending…"
             : root.copied ? "Copied." : "Scratchpad saved locally."
           wrapMode: Text.WordWrap
-          color: root.scratchpadSaveState === "error" || !root.backendInstalled
+          color: root.scratchpadSaveState === "error" || !root.backendInstalled || root.stateWarning !== ""
             ? root.accent : Qt.darker(root.foreground, 1.6)
           font.family: root.bar ? root.bar.fontFamily : Style.font.family
           font.pixelSize: Style.font.bodySmall

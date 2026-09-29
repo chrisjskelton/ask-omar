@@ -29,6 +29,42 @@ def run_node(script):
 
 @unittest.skipUnless(shutil.which("node"), "Node.js is needed to exercise QML JavaScript")
 class QmlBehaviorTests(unittest.TestCase):
+    def test_grant_button_follows_the_options_the_broker_offers(self):
+        run_node("\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const context = {pendingConfirmation: null};',
+            'vm.createContext(context);', functions("confirmationOffers"),
+            'assert.equal(vm.runInContext(`confirmationOffers("Allow for 15 minutes")`, context), false);',
+            'context.pendingConfirmation = {options: ["Allow once", "Allow for 15 minutes", "Deny"]};',
+            'assert.equal(vm.runInContext(`confirmationOffers("Allow for 15 minutes")`, context), true);',
+            'context.pendingConfirmation = {options: ["Allow once", "Deny"]};',
+            'assert.equal(vm.runInContext(`confirmationOffers("Allow for 15 minutes")`, context), false);',
+            'assert.equal(vm.runInContext(`confirmationOffers("Allow once")`, context), true);',
+        )))
+
+    def test_health_flags_a_widget_and_service_version_mismatch(self):
+        run_node("\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const context = {widgetVersion: "0.1.4", serviceVersion: "", stateWarning: "",',
+            '  healthChecked: false, healthStatus: "unknown", healthMessage: "", healthProvider: "",',
+            '  healthModel: "", healthThinking: "", healthSystemAccess: "ask",',
+            '  healthAccessRevision: 0, accessRevision: 0};',
+            'vm.createContext(context);', functions("handleHealth", "healthTitle", "healthLabel"),
+            'const ready = {ok: true, version: "0.1.4", agent: {status: "ready"}, state_warning: ""};',
+            'context.raw = JSON.stringify(ready);',
+            'vm.runInContext(`handleHealth(raw)`, context);',
+            'assert.equal(context.healthStatus, "ready");',
+            'context.raw = JSON.stringify({...ready, version: "0.1.3", state_warning: "kept aside"});',
+            'vm.runInContext(`handleHealth(raw)`, context);',
+            'assert.equal(context.healthStatus, "update");',
+            'assert.equal(context.stateWarning, "kept aside");',
+            'assert.match(vm.runInContext(`healthTitle()`, context), /Finish updating/);',
+            'assert.match(vm.runInContext(`healthLabel()`, context), /0\\.1\\.3.*make setup/);',
+            'context.raw = JSON.stringify({ok: true, agent: {status: "ready"}});',
+            'vm.runInContext(`handleHealth(raw)`, context);',
+            'assert.equal(context.healthStatus, "update");',
+        )))
+
     def test_copy_answer_uses_stdin_for_selection_or_full_body(self):
         script = "\n".join((
             'const vm = require("node:vm"); const assert = require("node:assert/strict");',
