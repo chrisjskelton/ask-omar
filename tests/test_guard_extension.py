@@ -609,6 +609,7 @@ await tool.execute(
             )
             script = """
 import guard from %s;
+import { existsSync } from "node:fs";
 const handlers = {};
 let tool = null;
 let active = [];
@@ -620,17 +621,20 @@ guard({
 });
 await handlers.session_start({}, {});
 const controller = new AbortController();
-setTimeout(() => controller.abort(), 300);
-try {
-  await tool.execute(
-    "abort",
-    { command: %s },
-    controller.signal,
-    undefined,
-    { cwd: process.cwd(), hasUI: false },
-  );
-} catch {}
-""" % (json.dumps(GUARD.as_uri()), json.dumps(command))
+const execution = tool.execute(
+  "abort",
+  { command: %s },
+  controller.signal,
+  undefined,
+  { cwd: process.cwd(), hasUI: false },
+).catch(() => {});
+const startDeadline = Date.now() + 2000;
+while (!existsSync(%s) && Date.now() < startDeadline) {
+  await new Promise((resolve) => setTimeout(resolve, 20));
+}
+controller.abort();
+await execution;
+""" % (json.dumps(GUARD.as_uri()), json.dumps(command), json.dumps(str(marker)))
             subprocess.run(
                 node_command(script),
                 check=True,
