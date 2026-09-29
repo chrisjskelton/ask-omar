@@ -245,6 +245,53 @@ class InstallIntegrationTests(unittest.TestCase):
 
         self.assertEqual(list(target.iterdir()), [])
 
+    def test_foreign_application_directory_is_refused_without_changes(self):
+        app = self.data / "ask-omar"
+        app.mkdir(parents=True)
+        sentinel = app / "keep"
+        sentinel.write_bytes(b"unrelated user data\n")
+        before = self.home_snapshot()
+
+        result = self.run_script("install.sh", "--backend-only", success=False)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("application directory Ask Omar did not install", result.stderr)
+        self.assertEqual(self.home_snapshot(), before)
+        self.assertEqual(sentinel.read_bytes(), b"unrelated user data\n")
+        self.assertEqual(self.calls(), "")
+
+    def test_exact_legacy_application_directories_upgrade_to_marked_install(self):
+        for release in ("v0.1.0", REVIEWED_COMMIT):
+            with self.subTest(release=release):
+                self.reset_home()
+                app = self.data / "ask-omar"
+                package = app / "service/ask_omar"
+                extensions = app / "extensions"
+                package.mkdir(parents=True)
+                extensions.mkdir()
+                package.joinpath("__init__.py").write_bytes(
+                    subprocess.check_output(
+                        ["git", "show", f"{release}:service/ask_omar/__init__.py"],
+                        cwd=ROOT,
+                    )
+                )
+                extensions.joinpath("ask-omar-guard.ts").write_bytes(
+                    subprocess.check_output(
+                        [
+                            "git",
+                            "show",
+                            f"{release}:service/ask_omar/extensions/ask-omar-guard.ts",
+                        ],
+                        cwd=ROOT,
+                    )
+                )
+
+                self.run_script("install.sh", "--backend-only")
+
+                marker = app / ".installed-by-ask-omar"
+                self.assertEqual(marker.read_text(), "# Installed by Ask Omar\n")
+                self.assertTrue((app / "service/ask_omar/__main__.py").is_file())
+
     def test_marketplace_symlink_to_checkout_is_allowed(self):
         self.plugin.parent.mkdir(parents=True)
         self.plugin.symlink_to(ROOT, target_is_directory=True)

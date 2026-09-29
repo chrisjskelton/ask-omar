@@ -32,6 +32,22 @@ ask_omar_matches_sha256() {
   [[ $actual == "$expected" ]]
 }
 
+ask_omar_owns_app_directory() {
+  local path=$1 init guard
+  [[ -d $path && ! -L $path ]] || return 1
+  ask_omar_has_marker "$path/.installed-by-ask-omar" && return 0
+
+  init="$path/service/ask_omar/__init__.py"
+  guard="$path/extensions/ask-omar-guard.ts"
+  if ask_omar_matches_sha256 "$init" "99f685c4490a478c5f010859d3bd635dfb1c73b59fc207fad499aeb7dbc19735"; then
+    ask_omar_matches_sha256 "$guard" "f7f0696e3809b7ff3f3494f79bbd7d6f1192100af3d98603a0e87bdb7699f0e0"
+  elif ask_omar_matches_sha256 "$init" "a57da2d68176ae3cc78f3166e43f9a06f831f4fbbd3fe76064f1af535902462d"; then
+    ask_omar_matches_sha256 "$guard" "0ee811d84d020ee40d970ba288b8618ae8f7b75bd339ec02ddbeb4af4a558fc9"
+  else
+    return 1
+  fi
+}
+
 ask_omar_owns_file() {
   local path=$1 kind=$2 root=$3
   ask_omar_has_marker "$path" && return 0

@@ -43,6 +43,7 @@ class InstallContractTests(unittest.TestCase):
                 self.assertIn(" -T ", line, line)
 
         marked_sources = (
+            "scripts/app-install-marker",
             "scripts/ask-omar",
             "scripts/ask-omar-open",
             "scripts/capture.sh",

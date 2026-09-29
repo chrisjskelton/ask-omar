@@ -40,7 +40,8 @@ for source in \
   "$ROOT/service/ask_omar/__main__.py" "$GUARD_SOURCE" \
   "$ROOT/systemd/ask-omar.service" "$ROOT/scripts/ask-omar" \
   "$ROOT/scripts/ask-omar-open" "$ROOT/scripts/capture.sh" \
-  "$ROOT/scripts/install-ownership.sh" "$ROOT/config/config.example.toml" \
+  "$ROOT/scripts/install-ownership.sh" "$ROOT/scripts/app-install-marker" \
+  "$ROOT/config/config.example.toml" \
   "$ROOT/desktop/ask-omar.desktop" "$ROOT/desktop/ask-omar-settings.desktop"; do
   [[ -f $source ]] || fail "missing source file: $source"
 done
@@ -75,6 +76,10 @@ for path in \
   "$DESKTOP_TARGET" "$SETTINGS_DESKTOP_TARGET"; do
   refuse_symlink "$path"
 done
+
+if [[ -e $APP_TARGET ]] && ! ask_omar_owns_app_directory "$APP_TARGET"; then
+  fail "refusing to replace an application directory Ask Omar did not install: $APP_TARGET"
+fi
 
 require_owned_file "$BIN_HOME/ask-omar" cli
 require_owned_file "$BIN_HOME/ask-omar-open" open
@@ -196,6 +201,7 @@ trap cleanup EXIT
 mkdir -p "$STAGE_ROOT/ask-omar/extensions"
 git -C "$ROOT" archive --format=tar HEAD service/ask_omar | tar -x -C "$STAGE_ROOT/ask-omar"
 install -T -m 644 "$GUARD_SOURCE" "$STAGE_ROOT/ask-omar/extensions/ask-omar-guard.ts"
+install -T -m 644 "$ROOT/scripts/app-install-marker" "$STAGE_ROOT/ask-omar/.installed-by-ask-omar"
 
 if [[ -e $APP_TARGET ]]; then
   APP_BACKUP=$(mktemp -d "$DATA_HOME/.ask-omar-backup.XXXXXX")
