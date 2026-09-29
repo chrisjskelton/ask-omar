@@ -16,6 +16,7 @@ DESKTOP_TARGET="$DATA_HOME/applications/ask-omar.desktop"
 SETTINGS_DESKTOP_TARGET="$DATA_HOME/applications/ask-omar-settings.desktop"
 GUARD_SOURCE="$ROOT/service/ask_omar/extensions/ask-omar-guard.ts"
 GUARD_TARGET="$APP_TARGET/extensions/ask-omar-guard.ts"
+APP_MANIFEST_NAME=.installed-files.sha256
 
 mode=${1:-full}
 case "$mode" in
@@ -68,6 +69,15 @@ require_owned_file() {
     fail "refusing to replace a file Ask Omar did not install: $path"
 }
 
+require_owned_plugin_file() {
+  local path=$1 relative=$2
+  [[ ! -e $path && ! -L $path ]] && return 0
+  refuse_symlink "$path"
+  [[ -f $path ]] || fail "refusing to replace non-file plugin destination: $path"
+  ask_omar_owns_plugin_file "$path" "$relative" "$ROOT" ||
+    fail "refusing to replace a plugin file Ask Omar did not install: $path"
+}
+
 # Complete destination preflight before invoking tools that may create state.
 for path in \
   "$APP_TARGET" "$APP_TARGET/service" "$APP_TARGET/service/ask_omar" \
@@ -104,10 +114,11 @@ if [[ $mode == full ]]; then
   if [[ $PLUGIN_IS_SOURCE -eq 0 ]]; then
     for path in \
       "$PLUGIN_TARGET/plugin" "$PLUGIN_TARGET/manifest.json" \
-      "$PLUGIN_TARGET/plugin/AskOmar.qml" "$PLUGIN_TARGET/AskOmar.qml" \
-      "$PLUGIN_TARGET/plugin/manifest.json"; do
+      "$PLUGIN_TARGET/plugin/AskOmar.qml"; do
       refuse_symlink "$path"
     done
+    require_owned_plugin_file "$PLUGIN_TARGET/manifest.json" manifest.json
+    require_owned_plugin_file "$PLUGIN_TARGET/plugin/AskOmar.qml" plugin/AskOmar.qml
   fi
 fi
 
@@ -185,7 +196,7 @@ ensure_directory() {
 }
 
 # All destination checks have passed. Stage only files tracked in the verified
-# commit, then swap the application directory without copying caches or extras.
+# commit without copying caches or extras.
 ensure_directory "$DATA_HOME"
 ensure_directory "$BIN_HOME"
 ensure_directory "$(dirname "$SERVICE_TARGET")"
@@ -203,18 +214,49 @@ git -C "$ROOT" archive --format=tar HEAD service/ask_omar | tar -x -C "$STAGE_RO
 install -T -m 644 "$GUARD_SOURCE" "$STAGE_ROOT/ask-omar/extensions/ask-omar-guard.ts"
 install -T -m 644 "$ROOT/scripts/app-install-marker" "$STAGE_ROOT/ask-omar/.installed-by-ask-omar"
 
-if [[ -e $APP_TARGET ]]; then
-  APP_BACKUP=$(mktemp -d "$DATA_HOME/.ask-omar-backup.XXXXXX")
-  rmdir "$APP_BACKUP"
-  mv -T -- "$APP_TARGET" "$APP_BACKUP"
-  if ! mv -T -- "$STAGE_ROOT/ask-omar" "$APP_TARGET"; then
-    mv -T -- "$APP_BACKUP" "$APP_TARGET"
-    fail "could not install the application files."
-  fi
-  rm -rf -- "$APP_BACKUP"
-else
-  mv -T -- "$STAGE_ROOT/ask-omar" "$APP_TARGET"
+(
+  cd "$STAGE_ROOT/ask-omar"
+  while IFS= read -r -d '' file; do
+    relative=${file#./}
+    read -r digest _ < <(sha256sum -- "$file")
+    printf '%s\t%s\n' "$digest" "$relative"
+  done < <(find . -type f ! -name "$APP_MANIFEST_NAME" -print0 | sort -z)
+) > "$STAGE_ROOT/ask-omar/$APP_MANIFEST_NAME"
+
+if [[ -e $APP_TARGET/$APP_MANIFEST_NAME ]] &&
+    ! ask_omar_valid_app_manifest "$APP_TARGET/$APP_MANIFEST_NAME"; then
+  fail "refusing to replace an invalid application manifest: $APP_TARGET/$APP_MANIFEST_NAME"
 fi
+
+# Preflight every managed runtime path before writing any of them. Existing
+# Ask Omar files are updated in place; unknown nested files are left alone.
+while IFS= read -r -d '' directory; do
+  relative=${directory#"$STAGE_ROOT/ask-omar"/}
+  [[ $directory == "$STAGE_ROOT/ask-omar" ]] && continue
+  target="$APP_TARGET/$relative"
+  refuse_symlink "$target"
+  [[ ! -e $target || -d $target ]] || fail "application directory path is not a directory: $target"
+done < <(find "$STAGE_ROOT/ask-omar" -type d -print0)
+while IFS= read -r -d '' file; do
+  relative=${file#"$STAGE_ROOT/ask-omar"/}
+  target="$APP_TARGET/$relative"
+  refuse_symlink "$target"
+  [[ ! -e $target || -f $target ]] || fail "application file path is not a regular file: $target"
+done < <(find "$STAGE_ROOT/ask-omar" -type f -print0)
+
+ensure_directory "$APP_TARGET"
+while IFS= read -r -d '' directory; do
+  relative=${directory#"$STAGE_ROOT/ask-omar"/}
+  [[ $directory == "$STAGE_ROOT/ask-omar" ]] && continue
+  ensure_directory "$APP_TARGET/$relative"
+done < <(find "$STAGE_ROOT/ask-omar" -type d -print0)
+while IFS= read -r -d '' file; do
+  relative=${file#"$STAGE_ROOT/ask-omar"/}
+  [[ $relative == "$APP_MANIFEST_NAME" ]] && continue
+  install -T -m 644 "$file" "$APP_TARGET/$relative"
+done < <(find "$STAGE_ROOT/ask-omar" -type f -print0)
+install -T -m 644 \
+  "$STAGE_ROOT/ask-omar/$APP_MANIFEST_NAME" "$APP_TARGET/$APP_MANIFEST_NAME"
 
 # A marketplace checkout may itself be the installed target. Keep it intact;
 # otherwise install just the runtime plugin files.
@@ -222,7 +264,6 @@ if [[ $mode == full && $PLUGIN_IS_SOURCE -eq 0 ]]; then
   install -d "$PLUGIN_TARGET/plugin"
   install -T -m 644 "$ROOT/manifest.json" "$PLUGIN_TARGET/manifest.json"
   install -T -m 644 "$ROOT/plugin/AskOmar.qml" "$PLUGIN_TARGET/plugin/AskOmar.qml"
-  rm -f "$PLUGIN_TARGET/AskOmar.qml" "$PLUGIN_TARGET/plugin/manifest.json"
 fi
 
 if [[ ! -e $CONFIG_TARGET && ! -L $CONFIG_TARGET ]]; then

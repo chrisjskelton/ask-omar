@@ -61,10 +61,13 @@ class InstallContractTests(unittest.TestCase):
     def test_readme_pins_a_full_detached_commit_for_each_install_route(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotRegex(readme, r"git clone[^\n]*--branch")
+        self.assertNotIn("plugin add https://github.com/chrisjskelton/ask-omar.git --enable", readme)
         checkout = 'git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"'
         self.assertGreaterEqual(readme.count(checkout), 4)
         self.assertIn('make install ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"', readme)
         self.assertIn('make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"', readme)
+        setup = readme[readme.index("### Omarchy plugin installer / marketplace"):readme.index("## Permissions and the guard")]
+        self.assertLess(setup.index("checkout --detach"), setup.index("plugin enable ask-omar.assistant"))
 
 
 if __name__ == "__main__":
