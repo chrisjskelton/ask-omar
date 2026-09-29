@@ -202,6 +202,10 @@ class PiAgent:
         with self.lifecycle_lock:
             # Deny any pending confirmation so the query loop unblocks.
             self.deny_pending_confirmation()
+            # Stopping Pi ends the conversation, and a temporary command grant
+            # never outlives the conversation it was given in (Stop, errors,
+            # timeouts, New, idle reset and settings changes all come here).
+            self.revoke_temporary_grant()
             process = self.process
             if process and process.poll() is None:
                 try:
@@ -459,8 +463,8 @@ class PiAgent:
                             )
                         elif method == "select":
                             if response == "Allow for 15 minutes":
-                                # The extension enforces the live grant. Mirror its expiry
-                                # here only so an internal Pi restart can restore it.
+                                # The extension enforces the live grant; this mirror only
+                                # records it. stop() clears it with the conversation.
                                 self.temporary_grant_until = int(time.time() * 1000) + self.temporary_grant_ms
                             self._write_rpc({"type": "extension_ui_response", "id": request_id, "value": response})
                         elif method == "confirm":

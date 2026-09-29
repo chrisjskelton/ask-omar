@@ -332,7 +332,6 @@ class AskOmar:
         if not next_provider or not next_model or not next_thinking:
             return {"ok": False, "error": "Provider, model, and reasoning are required."}
         with self.foreground_lock:
-            temporary_grant_until = self.agent.temporary_grant_until if self.agent else 0
             path = self.config_path
             try:
                 update_agent_settings(
@@ -346,11 +345,8 @@ class AskOmar:
             if self.agent:
                 self.agent.stop()
             self.config = Config.load(path)
-            self.agent = (
-                PiAgent(self.config, temporary_grant_until)
-                if self.config.backend == "pi"
-                else None
-            )
+            # A model change starts a new conversation, so no grant carries over.
+            self.agent = PiAgent(self.config) if self.config.backend == "pi" else None
         readiness = self.health()
         return self.response(
             kind="agent_settings",

@@ -12,14 +12,14 @@ Ask Omar runs with your user permissions and isn't a sandbox. By default, **Ask 
 
 ## What it does
 
-- **Ask, then follow up.** Get help with Omarchy or ask Omar to carry out a small desktop task. Follow-ups share one conversation until you press **New**, change the model or safety mode, restart the service, or come back after 30 idle minutes.
+- **Ask, then follow up.** Get help with Omarchy or ask Omar to carry out a small desktop task. Follow-ups share one conversation until it ends: when you press **New** or **Stop**, change the model or safety mode, a request fails, the service restarts, or you come back after 30 idle minutes.
 - **Keep a Scratchpad.** Local notes for paths, prompts and half-written thoughts. Notes aren't sent with your questions; paste in anything you want Omar to see.
 - **Capture and dictate.** Take a screenshot or recording from the bar. Omar copies the file path, or adds a screenshot to Scratchpad. With optional [Voxtype](https://voxtype.io), tap the mic to dictate or hold it while you talk; you choose when to send.
 - **Revisit answers.** Recent questions and answers are in Settings → Past answers. Opening one doesn't reopen that conversation.
 
 Try “What's the shortcut to move a window to workspace 2?” or a small task such as “Sort the files in ~/ask-omar-demo into folders by type.” Omar can read and search your files and, with the access you choose, run shell commands, starting in your home folder. Results depend on your model and installed tools.
 
-Requests that ask for a Google or web search, such as “google Hyprland gaps” or “search the web for Omarchy themes”, open Google in your browser instead of going to the AI. “open https://…” opens that link directly.
+Requests that start with “google”, “search google”, “search the web” or “web search” (for example “google Hyprland gaps”) open a Google search in your browser instead of going to the AI. That includes any request whose first word is “Google”. “open https://…” opens that link directly.
 
 ## What Pi does
 
@@ -29,9 +29,9 @@ Pi does the AI work. You install Pi and sign in to your provider there; Ask Omar
 
 This is for **Omarchy Quattro (4.x), with its Quickshell plugin system**. It was tested with Omarchy **4.0.3-1**, Pi **0.85.1**, Python **3.14.7** and Node **26.8.1**. Other combinations are not yet certified.
 
-- Python **3.11+**, Node with native TypeScript support (**22.18+**), `make` and `git`.
+- Python **3.11+** available as `python`, Node with native TypeScript support (**22.18+**), `make` and `git`.
 - Omarchy's shell, plugin commands and capture/notification helpers; a working systemd user session.
-- `wl-copy`, `jq`, `grim` and the capture dependencies supplied by Omarchy. Voxtype is optional.
+- `wl-copy`, `jq`, `grim`, `pgrep`, `xdg-open`, `tar`, `sha256sum`, `readlink` and the capture dependencies supplied by Omarchy. Voxtype is optional.
 - For AI: install Pi separately and connect a provider inside Pi. Model use follows your provider's access and pricing.
 
 Setup checks dependencies before changing files. It doesn't request root or change packaged Omarchy files.
@@ -55,7 +55,7 @@ make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 omarchy plugin enable ask-omar.assistant
 ```
 
-Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs the tests, then installs the background service and launchers. An existing Ask Omar configuration is kept.
+Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs the tests and Omarchy's plugin validation, then installs the background service, launchers and app-menu entries. An existing Ask Omar configuration is kept.
 
 For AI requests, run `pi`, use `/login` to connect your provider, then:
 
@@ -82,14 +82,14 @@ Choose a mode in Settings → Safety:
 
 | Mode | What happens |
 |---|---|
-| **Ask First** (default) | Every command is shown before it runs. Choose **Allow once**, **Allow for 15 minutes** or **Deny**. The 15-minute option covers routine commands in later requests; it ends early on New, a safety-mode change, the idle reset or a service restart. |
+| **Ask First** (default) | Every command is shown before it runs. Choose **Allow once**, **Allow for 15 minutes** or **Deny**. The 15-minute option skips approval for routine commands, in this and later requests, until 15 minutes pass or the conversation ends (see above). |
 | **Ask for Recognized Risks** | Routine commands run without being shown. Omar asks only about commands it recognizes as high-risk. |
 | **Block Commands** | No shell commands. Omar can still read and search your files. |
-| **Always Allow — Dangerous** | Every command runs without asking, including destructive ones. It needs a separate confirmation in Settings. |
+| **Always Allow — Dangerous** | Every command runs without asking, including destructive ones. Choosing it in Settings needs a separate confirmation. |
 
-An approval request that isn't answered within 90 seconds is cancelled. Commands stop after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Stop cancels the current task, but **doesn't undo anything already done**.
+If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. Commands stop after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Stop cancels the current task, but **doesn't undo anything already done**.
 
-**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: recursive forced deletion (`rm -rf`), disk and partition tools, low-level overwrites, recursive permission or ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
+**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: recursive forced deletion (`rm -rf`), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
 
 ## Privacy and retention
 
@@ -103,9 +103,9 @@ No Ask Omar telemetry is implemented. Notes, drafts and recent answers are store
 | Attached screenshots | Private local copies. Removing a note does not remove its attachment files. |
 | Original captures | Stay in Omarchy's capture location. |
 | Conversation context | In Pi memory; the next request after 30 idle minutes starts fresh. |
-| Agent log | Private local stderr log, trimmed at startup. |
+| Agent log | Private local stderr log, trimmed to its last 1 MiB whenever a new conversation starts. |
 
-State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `${XDG_CONFIG_HOME:-~/.config}/ask-omar`. If the saved-state file can't be read, Ask Omar keeps it as `state.json.unreadable-…`, starts with empty notes, and says so in Scratchpad. Local data is protected by user permissions, not encrypted by Ask Omar. Clipboard managers may retain copied content. Answers are displayed as plain text so remote images in model output are not automatically loaded.
+State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `${XDG_CONFIG_HOME:-~/.config}/ask-omar`. If the saved-state file is corrupt, too large or in an unknown format, Ask Omar keeps it as `state.json.unreadable-…`, starts with empty notes, and says so in Scratchpad. If it can't be opened or moved aside, it is left in place and saves are refused. Local data is protected by user permissions, not encrypted by Ask Omar. Clipboard managers may retain copied content. Answers are displayed as plain text so remote images in model output are not automatically loaded.
 
 ## Update and remove
 

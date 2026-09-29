@@ -344,7 +344,7 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("Review shell command", QML)
         self.assertIn('"Allow the command once"', QML)
         self.assertIn('"Deny the command"', QML)
-        self.assertIn("Allow for 15 minutes covers routine commands in your next requests", QML)
+        self.assertIn("Allow for 15 minutes skips approval for routine commands for 15 minutes, or until this conversation ends", QML)
         self.assertIn('root.respondToConfirmation("Allow once")', QML)
         self.assertIn('root.respondToConfirmation("Allow for 15 minutes")', QML)
         confirmation_block = QML[QML.index("Review shell command"):QML.index("// Slow hint is folded")]

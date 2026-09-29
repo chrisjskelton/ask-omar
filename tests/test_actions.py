@@ -31,6 +31,7 @@ class ActionResolutionTests(unittest.TestCase):
         self.assertIsNone(web_search_request("What is Google?"))
         self.assertIsNone(web_search_request("search Google"))
         self.assertIsNone(web_search_request("Googled it yesterday"))
+        self.assertIsNone(web_search_request("Google's DNS address?"))
 
     def test_web_wording_opens_a_search_but_bare_search_goes_to_omar(self):
         self.assertEqual(web_search_request("search the web for Omarchy themes"), "Omarchy themes")

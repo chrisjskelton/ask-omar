@@ -585,7 +585,8 @@ class LocalAnswerTests(unittest.TestCase):
             agent_cls.return_value = Mock()
             result = self.omar.set_agent(model="gpt-5.6-terra", thinking="high")
         old_agent.stop.assert_called_once()
-        self.assertEqual(agent_cls.call_args.args[1], 123456)
+        # Changing the model starts a new conversation without the old grant.
+        self.assertEqual(len(agent_cls.call_args.args), 1)
         self.assertTrue(result["ok"])
         self.assertEqual(result["model"], "gpt-5.6-terra")
         self.assertEqual(result["thinking"], "high")

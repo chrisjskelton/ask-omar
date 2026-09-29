@@ -140,7 +140,7 @@ def web_search_request(text: str) -> str | None:
         r"|google(?:\s+for)?"
         r"|search\s+(?:the\s+)?(?:web|internet|online)(?:\s+for)?"
         r"|web\s+search(?:\s+for)?"
-        r")\b(.*)$",
+        r")(?=\s|,|:|-|$)(.*)$",
         text,
         re.IGNORECASE,
     )

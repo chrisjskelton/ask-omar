@@ -3909,7 +3909,7 @@ BarWidget {
                 textFormat: Text.PlainText
                 width: parent.width
                 text: root.confirmationOffers("Allow for 15 minutes")
-                  ? "Allow once runs only this command. Allow for 15 minutes covers routine commands in your next requests; high-risk commands still ask."
+                  ? "Allow once runs only this command. Allow for 15 minutes skips approval for routine commands for 15 minutes, or until this conversation ends; high-risk commands still ask."
                   : "Allow once runs only this command. Omar will ask again next time."
                 wrapMode: Text.WordWrap
                 color: Qt.darker(root.foreground, 1.5)

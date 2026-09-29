@@ -18,7 +18,7 @@ timeout_seconds = 90
 
 [conversation]
 # A new in-memory Pi conversation starts after this many idle minutes.
-# Set to 0 to keep the conversation until New, service restart, or failure.
+# Set to 0 to keep it until New, Stop, a model or safety-mode change, a failure, or a restart.
 idle_timeout_minutes = 30
 
 [history]
