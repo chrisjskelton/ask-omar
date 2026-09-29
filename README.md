@@ -12,7 +12,7 @@ Ask Omar runs with your user permissions and isn't a sandbox. By default, **Ask 
 
 ## What it does
 
-- **Ask, then follow up.** Get help with Omarchy or ask Omar to carry out a small desktop task. Follow-ups share one conversation until it ends: when you press **New** or **Stop**, change the model or safety mode, a request fails, the service restarts, or you come back after 30 idle minutes.
+- **Ask, then follow up.** Get help with Omarchy or ask Omar to carry out a small desktop task. Follow-ups share one conversation until it ends: when you press **New** or **Stop**, change the model or safety mode, a request to the AI fails or is blocked because Pi isn't ready, the service restarts, or you come back after 30 idle minutes.
 - **Keep a Scratchpad.** Local notes for paths, prompts and half-written thoughts. Notes aren't sent with your questions; paste in anything you want Omar to see.
 - **Capture and dictate.** Take a screenshot or recording from the bar. Omar copies the file path, or adds a screenshot to Scratchpad. With optional [Voxtype](https://voxtype.io), tap the mic to dictate or hold it while you talk; you choose when to send.
 - **Revisit answers.** Recent questions and answers are in Settings → Past answers. Opening one doesn't reopen that conversation.

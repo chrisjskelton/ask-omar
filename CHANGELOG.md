@@ -9,7 +9,7 @@
 - Questions reuse a successful Pi sign-in check for up to 10 minutes instead of running `pi auth check` and scanning installed apps every time.
 - Only requests that start with “google”, “search google”, “search the web” or “web search” open Google. “search my Downloads for …” now goes to Omar.
 - Ask for Recognized Risks no longer offers “Allow for 15 minutes”, which had no effect in that mode.
-- A temporary command grant now ends whenever the conversation ends, including Stop, a model change, a failed request and the idle reset. Previously Stop and model changes kept it.
+- A temporary command grant now ends whenever the conversation ends, including Stop, a model change, a failed AI request and the idle reset. Previously Stop and model changes kept it.
 - Removed unused action matching, app discovery and usage scoring, and stopped telling the AI about buttons that no longer exist.
 - Documentation now states that the high-risk prompt is a warning rather than a boundary, explains what Pi does, and lists everything that ends a temporary grant, and describes the permission pattern accurately (only recursive world-writable changes are flagged). The unpublished `docs/` product page and old demo were removed.
 
