@@ -24,6 +24,7 @@ mode=${1:-full}
 # With a launcher manifest (written by setup since 0.1.6) only a file that still
 # matches its recorded hash is removed. Without one, the marker or an exact
 # legacy match is enough, as before.
+left_modified_launcher=0
 remove_owned_file() {
   local path=$1 kind=$2 hash
   [[ -e $path || -L $path ]] || return 0
@@ -34,6 +35,7 @@ remove_owned_file() {
       rm -f -- "$path"
     else
       echo "Leaving modified file: $path" >&2
+      left_modified_launcher=1
     fi
   elif ask_omar_owns_file "$path" "$kind" "$ROOT"; then
     rm -f -- "$path"
@@ -127,11 +129,16 @@ if ask_omar_owns_app_directory "$APP_TARGET"; then
         echo "Leaving modified application file: $path" >&2
       fi
     done < "$manifest"
-    rm -f -- "$manifest" "$LAUNCHER_MANIFEST"
+    rm -f -- "$manifest"
+    # Keep the record while an edited file is left, so running uninstall
+    # again still leaves it alone.
+    (( left_modified_launcher )) || rm -f -- "$LAUNCHER_MANIFEST"
     rmdir -- "$APP_TARGET" 2>/dev/null || true
   else
     echo "Leaving application directory without a valid managed-file manifest: $APP_TARGET" >&2
   fi
+elif ask_omar_is_bytecode_residue "$APP_TARGET"; then
+  : # only caches or the record of an edited file uninstall left behind
 elif [[ -e $APP_TARGET || -L $APP_TARGET ]]; then
   echo "Leaving application path Ask Omar could not identify: $APP_TARGET" >&2
 fi

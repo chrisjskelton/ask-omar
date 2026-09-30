@@ -28,7 +28,7 @@ ask_omar_matches_sha256() {
   local path=$1 expected=$2 actual
   [[ -f $path && ! -L $path ]] || return 1
   command -v sha256sum >/dev/null || return 1
-  read -r actual _ < <(sha256sum -- "$path")
+  read -r actual _ < <(sha256sum < "$path")
   [[ $actual == "$expected" ]]
 }
 
@@ -59,8 +59,8 @@ ask_omar_is_bytecode_residue() {
     case $kind in
       d) [[ $relative == service || $relative == service/ask_omar ||
             $relative == service/ask_omar/* ]] || return 1 ;;
-      f) [[ $relative == service/ask_omar/*.pyc &&
-            ${relative%/*} == */__pycache__ ]] || return 1 ;;
+      f) [[ ( $relative == service/ask_omar/*.pyc && ${relative%/*} == */__pycache__ ) ||
+            $relative == .installed-launchers.sha256 ]] || return 1 ;;
       *) return 1 ;;
     esac
   done < <(find "$path" -mindepth 1 \

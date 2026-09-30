@@ -159,7 +159,7 @@ matches_older_launcher() {
     if [[ $kind == cli ]]; then
       # Python may have been upgraded since, so ignore which interpreter the
       # old launcher points at and compare everything else.
-      cmp -s <(sed -E 's#^exec [^ ]+ #exec __ASK_OMAR_PYTHON__ #' -- "$target") \
+      cmp -s <(sed -E 's#^exec (\\.|[^ \\])+ #exec __ASK_OMAR_PYTHON__ #' -- "$target") \
         <(git -C "$ROOT" show "$tag:$source") && return 0
     else
       cmp -s -- "$target" <(git -C "$ROOT" show "$tag:$source") && return 0
@@ -189,7 +189,7 @@ for kind in "${LAUNCHER_KINDS[@]}"; do
     ask_omar_has_marker "$target" || continue
     matches_older_launcher "$kind" "$target" && continue
   fi
-  fail "refusing to replace a file Ask Omar did not install, or that has been changed: $target"
+  fail "refusing to replace a file Ask Omar did not install, or that has been changed: $target (move it aside and run setup again; if you installed before 0.1.4, run git fetch --tags here first)"
 done
 
 # Test the capability Pi's TypeScript extension needs, instead of guessing a
@@ -274,7 +274,7 @@ install -T -m 644 "$ROOT/scripts/app-install-marker" "$STAGE_ROOT/ask-omar/.inst
   cd "$STAGE_ROOT/ask-omar"
   while IFS= read -r -d '' file; do
     relative=${file#./}
-    read -r digest _ < <(sha256sum -- "$file")
+    read -r digest _ < <(sha256sum < "$file")
     printf '%s\t%s\n' "$digest" "$relative"
   done < <(find . -type f ! -name "$APP_MANIFEST_NAME" -print0 | sort -z)
 ) > "$STAGE_ROOT/ask-omar/$APP_MANIFEST_NAME"
@@ -338,7 +338,7 @@ while IFS= read -r -d '' file; do
   elif matches_older_release "$relative" "$target"; then
     continue
   fi
-  fail "refusing to replace a file Ask Omar did not install, or that has been changed: $target"
+  fail "refusing to replace a file Ask Omar did not install, or that has been changed: $target (move it aside and run setup again; if you installed before 0.1.4, run git fetch --tags here first)"
 done < <(find "$STAGE_ROOT/ask-omar" -type f -print0)
 
 ensure_directory "$APP_TARGET"
@@ -378,7 +378,7 @@ install -T -m 644 "$ROOT/desktop/ask-omar-settings.desktop" "$SETTINGS_DESKTOP_T
 # Record what was just installed so a later setup or uninstall can leave
 # anything the user changes since.
 for kind in "${LAUNCHER_KINDS[@]}"; do
-  read -r digest _ < <(sha256sum -- "$(launcher_target "$kind")")
+  read -r digest _ < <(sha256sum < "$(launcher_target "$kind")")
   printf '%s\t%s\n' "$kind" "$digest"
 done > "$LAUNCHER_STAGE/$LAUNCHER_MANIFEST_NAME"
 install -T -m 644 "$LAUNCHER_STAGE/$LAUNCHER_MANIFEST_NAME" "$PREVIOUS_LAUNCHERS"

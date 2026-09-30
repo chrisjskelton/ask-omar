@@ -283,7 +283,11 @@ class InstallIntegrationTests(unittest.TestCase):
         for name, path in files.items():
             if name != "launcher":
                 self.assertFalse(path.exists(), name)
-        self.assertFalse((self.data / "ask-omar").exists())
+        # Only the record of the edited launcher stays, so a second
+        # uninstall still leaves it alone.
+        self.assertEqual(
+            [p.name for p in (self.data / "ask-omar").iterdir()], [".installed-launchers.sha256"]
+        )
 
     def test_uninstall_leaves_edited_service_and_menu_entries(self):
         for name in ("service", "desktop", "settings-desktop"):
@@ -303,6 +307,26 @@ class InstallIntegrationTests(unittest.TestCase):
         self.run_script("uninstall.sh")
         for path in self.managed_files().values():
             self.assertFalse(path.exists())
+
+    def test_repeated_uninstall_still_leaves_an_edited_launcher(self):
+        self.run_script("install.sh")
+        launcher = self.home / ".local/bin/ask-omar-open"
+        launcher.write_text(launcher.read_text() + "# my edit\n")
+        self.run_script("uninstall.sh")
+        self.run_script("uninstall.sh")
+        self.assertTrue(launcher.read_text().endswith("# my edit\n"))
+        # Setup still refuses to replace it, and says which file.
+        result = self.run_script("install.sh", success=False)
+        self.assertIn(str(launcher), result.stderr)
+        self.assertTrue(launcher.read_text().endswith("# my edit\n"))
+
+    def test_recorded_hashes_survive_a_backslash_in_the_path(self):
+        self.env["XDG_CONFIG_HOME"] = str(self.home / "odd\\config")
+        self.run_script("install.sh")
+        # A second setup must accept its own record, and uninstall must use it.
+        self.run_script("install.sh")
+        self.run_script("uninstall.sh")
+        self.assertFalse((self.home / "odd\\config/systemd/user/ask-omar.service").exists())
 
     def test_uninstall_deletes_user_data_only_when_the_user_says_yes(self):
         import pty

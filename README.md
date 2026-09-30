@@ -55,7 +55,7 @@ make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 omarchy plugin enable ask-omar.assistant
 ```
 
-Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs Omarchy's plugin validation, then installs the background service, launchers and app-menu entries. An existing Ask Omar configuration is kept.
+Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs Omarchy's plugin validation, then installs the background service, launchers and app-menu entries. An existing Ask Omar configuration is kept. If a file setup would replace has been changed, or wasn't installed by Ask Omar, it stops before changing anything and names the file.
 
 For AI requests, run `pi`, use `/login` to connect your provider, then:
 
@@ -156,6 +156,7 @@ Remove original captures separately if wanted. Local deletion does not erase pro
 
 ## Troubleshooting
 
+- **Setup refuses to replace a file:** you or another program changed it. Move the named file somewhere safe and run setup again. If you first installed before 0.1.4 and the checkout has no release tags, run `git fetch --tags` in the plugin folder first.
 - **Checkout verification fails:** copy the full 40-character commit from the release notes, run `git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"` in the plugin folder, and remove or preserve any local changes before retrying `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`.
 - **Widget says the background service isn't installed, or “Finish updating Ask Omar”:** in the plugin folder, check out the release commit as above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`. If it says the bar is still running the older widget, just run `omarchy-restart-shell`.
 - **`omarchy plugin add` says the plugin is already installed:** an older copied widget is still there, or uninstall left files you had changed. See [Moving from an older clone install](#moving-from-an-older-clone-install).
