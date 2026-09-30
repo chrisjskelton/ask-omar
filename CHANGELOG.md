@@ -2,7 +2,7 @@
 
 ## 0.1.6 — Quicker setup and safer deletes
 
-- When you ask Omar to delete something, it moves it to the Trash so you can get it back.
+- Omar is told to move things to the Trash when you ask it to delete them, so you can usually get them back.
 - `make setup` no longer runs the developer tests, so it finishes in seconds with a few lines of output.
 - `make uninstall` asks whether to delete your notes, history and settings too.
 - Deleting a file with hyphens in its name is no longer mistaken for `rm -rf`.

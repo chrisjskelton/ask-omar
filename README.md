@@ -96,11 +96,11 @@ Choose a mode in Settings → Safety:
 | Mode | What happens |
 |---|---|
 | **Ask First** (default) | Every command is shown before it runs. Choose **Allow once**, **Allow for 15 minutes** or **Deny**. The 15-minute option skips approval for routine commands, in this and later requests, until 15 minutes pass or the conversation ends (see above). |
-| **Ask for Recognized Risks** | Routine commands run without being shown. Omar asks only about commands it recognizes as high-risk. |
+| **Ask for Recognized Risks** | Routine commands, including ordinary deletes, run without being shown. Omar asks only about commands it recognizes as high-risk. |
 | **Block Commands** | No shell commands. Omar can still read and search your files. |
 | **Always Allow — Dangerous** | Every command runs without asking, including destructive ones. Choosing it in Settings needs a separate confirmation. |
 
-When you ask Omar to delete something, it moves it to the Trash so you can get it back.
+Omar is told to move things to the Trash when you ask it to delete them, so you can usually get them back. This is an instruction to the AI, not a lock: in Ask for Recognized Risks an ordinary delete runs without asking. Use Ask First if you want to see every command.
 
 If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. A command is stopped after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Anything it leaves running in the background is stopped when the conversation ends. Stop cancels the current task, but **doesn't undo anything already done**.
 
