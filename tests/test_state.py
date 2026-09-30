@@ -139,6 +139,11 @@ class StateStoreTests(unittest.TestCase):
             self.assertEqual([item["query"] for item in store.history()], ["q"])
             self.assertEqual(store.scratchpad_notes(), ["keep me"])
             self.assertEqual(store.draft(), "")
+            reloaded = StateStore(path)
+            self.assertEqual(reloaded.scratchpad_notes(), ["keep me"])
+            self.assertEqual([item["query"] for item in reloaded.history()], ["q"])
+            self.assertEqual(reloaded.warning, "")
+            self.assertEqual(len(list(path.parent.glob("state.json.unreadable-*"))), 1)
             store.set_draft("example")
             self.assertEqual(StateStore(path).draft(), "example")
             self.assertEqual(kept[0].read_text(), original)
@@ -163,6 +168,15 @@ class StateStoreTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 store.set_draft("blocked")
             self.assertIn('"query":"q"', path.read_text())
+
+    def test_blocked_saves_do_not_break_reading_an_expired_draft(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text('{"version":1,"history":[1],"draft":{"text":"old","at":0}}')
+            with patch("ask_omar.state.os.link", side_effect=PermissionError(13, "Permission denied")):
+                store = StateStore(path)
+            self.assertEqual(store.draft(), "")
+            self.assertIn('"text":"old"', path.read_text())
 
     def assert_set_aside(self, path: Path, contents: bytes) -> StateStore:
         path.write_bytes(contents)

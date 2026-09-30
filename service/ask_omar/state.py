@@ -68,6 +68,7 @@ class StateStore:
     def load(self) -> None:
         with self._lock:
             missing = False
+            damaged = False
             raw: Any = None
             try:
                 if self.path.stat().st_size > self.max_state_bytes:
@@ -88,7 +89,6 @@ class StateStore:
             if isinstance(raw, dict):
                 # Load what is readable, but never silently drop the rest: if
                 # anything is skipped, the original file is kept aside.
-                damaged = False
                 history = raw.get("history")
                 if isinstance(history, list):
                     self.data["history"] = [
@@ -128,6 +128,13 @@ class StateStore:
                     self._save_unlocked()
             else:
                 self.data["history"] = self.data["history"][: self.history_limit]
+            if damaged and not self._save_block:
+                # The original is safely kept aside; save what was readable so
+                # it is still there after a restart.
+                try:
+                    self._save_unlocked()
+                except (OSError, ValueError):
+                    pass
 
     def save(self) -> None:
         with self._lock:
@@ -221,7 +228,8 @@ class StateStore:
                 return ""
             if time.time() - float(draft.get("at", 0)) > max_age_seconds:
                 self.data["draft"] = None
-                self._save_unlocked()
+                if not self._save_block:
+                    self._save_unlocked()
                 return ""
             return str(draft.get("text", ""))
 
