@@ -151,6 +151,24 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
         self.assertIn("omarchy plugin disable ask-omar.assistant", self.calls())
 
+    def test_setup_refuses_to_replace_changed_or_unrecorded_application_files(self):
+        manifest = self.data / "ask-omar/.installed-files.sha256"
+        server = self.data / "ask-omar/service/ask_omar/server.py"
+        for case in ("changed", "unrecorded"):
+            with self.subTest(case=case):
+                self.reset_home()
+                self.run_script("install.sh")
+                if case == "unrecorded":
+                    lines = manifest.read_text().splitlines(keepends=True)
+                    manifest.write_text(
+                        "".join(line for line in lines if not line.endswith("\tservice/ask_omar/server.py\n"))
+                    )
+                server.write_text("# the user's own file\n")
+                result = self.run_script("install.sh", success=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("refusing to replace a file Ask Omar did not install", result.stderr)
+                self.assertEqual(server.read_text(), "# the user's own file\n")
+
     def test_uninstall_deletes_user_data_only_when_the_user_says_yes(self):
         import pty
 

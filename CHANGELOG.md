@@ -2,6 +2,7 @@
 
 ## 0.1.6 — Quicker setup and safer deletes
 
+- Setup no longer overwrites a program file you've changed, or one Ask Omar didn't install. It stops before changing anything and tells you which file.
 - Omar is told to move things to the Trash when you ask it to delete them, so you can usually get them back.
 - `make setup` no longer runs the developer tests, so it finishes in seconds with a few lines of output.
 - `make uninstall` asks whether to delete your notes, history and settings too.

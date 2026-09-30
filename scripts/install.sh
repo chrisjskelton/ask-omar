@@ -203,11 +203,43 @@ while IFS= read -r -d '' directory; do
   refuse_symlink "$target"
   [[ ! -e $target || -d $target ]] || fail "application directory path is not a directory: $target"
 done < <(find "$STAGE_ROOT/ask-omar" -type d -print0)
+# An existing file is only replaced if Ask Omar put it there unchanged: it is
+# already this release's file, it matches the hash recorded when it was
+# installed, or (for installs from before the manifest) it matches that file
+# in an older release.
+PREVIOUS_MANIFEST="$APP_TARGET/$APP_MANIFEST_NAME"
+recorded_hash() {
+  [[ -f $PREVIOUS_MANIFEST ]] || return 1
+  awk -F '\t' -v path="$1" '$2 == path { print $1; found = 1; exit } END { exit !found }' \
+    "$PREVIOUS_MANIFEST"
+}
+matches_older_release() {
+  local relative=$1 target=$2 source tag
+  # These two were already matched to exact release hashes to recognise the
+  # directory as an older Ask Omar install.
+  [[ $relative == service/ask_omar/__init__.py || $relative == extensions/ask-omar-guard.ts ]] &&
+    return 0
+  source=$relative
+  [[ $relative == extensions/* ]] && source="service/ask_omar/$relative"
+  for tag in v0.1.0 v0.1.1 v0.1.2; do
+    git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null || continue
+    cmp -s -- "$target" <(git -C "$ROOT" show "$tag:$source" 2>/dev/null) && return 0
+  done
+  return 1
+}
 while IFS= read -r -d '' file; do
   relative=${file#"$STAGE_ROOT/ask-omar"/}
   target="$APP_TARGET/$relative"
   refuse_symlink "$target"
   [[ ! -e $target || -f $target ]] || fail "application file path is not a regular file: $target"
+  [[ -e $target && $relative != "$APP_MANIFEST_NAME" ]] || continue
+  cmp -s -- "$file" "$target" && continue
+  if [[ -f $PREVIOUS_MANIFEST ]]; then
+    hash=$(recorded_hash "$relative") && ask_omar_matches_sha256 "$target" "$hash" && continue
+  elif matches_older_release "$relative" "$target"; then
+    continue
+  fi
+  fail "refusing to replace a file Ask Omar did not install, or that has been changed: $target"
 done < <(find "$STAGE_ROOT/ask-omar" -type f -print0)
 
 ensure_directory "$APP_TARGET"
