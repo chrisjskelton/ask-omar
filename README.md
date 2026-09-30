@@ -18,13 +18,13 @@ Two things to know up front. Omar runs as you, and by default it shows you every
 
 Omar can read and search your files, and run shell commands when you let it, starting from your home folder. How far it gets depends on the model you choose.
 
-Some requests skip the AI entirely. Start with "google" or "search the web for" and Omar opens a Google search in your browser: `google hyprland gaps`. Type `open` and a web address, like `open https://omarchy.org`, and it opens that page. Neither goes to Pi, so both work before you've set Pi up.
+Some requests skip the AI entirely. Start with "google" or "search the web for" and Omar opens a Google search in your browser: `google hyprland gaps`. Type `open` and a full link, like `open https://omarchy.org`, and it opens that page. Neither goes to Pi, so both work before you've set Pi up.
 
 ## What's in the bar
 
-- **Follow-ups.** Omar remembers the conversation until you press **New** or leave it for 30 minutes. Pressing **Stop**, switching model or safety mode, restarting Ask Omar, or a request that fails also starts a fresh one.
+- **Follow-ups.** Omar remembers the conversation until you press **New** or leave it for 30 minutes (you can change that in the config). Pressing **Stop**, switching model or safety mode, restarting Ask Omar, or a request that fails also starts a fresh one.
 - **Scratchpad.** Up to 20 notes for paths, prompts and half-finished thoughts. They stay on your computer and aren't included when you ask Omar something. To show Omar a note, copy it into your question.
-- **Capture.** Click the camera for a screenshot, or right-click for a window, the current screen, a 5-second delay or a screen recording. Omar copies the file's path so you can paste it into a question or a terminal. With Scratchpad open, a screenshot goes into your note instead.
+- **Capture.** Click the camera for a screenshot, or right-click for a region, a window, the current screen, a 5-second delay or a silent screen recording. Omar copies the file's path so you can paste it into a question or a terminal. With Scratchpad open, a screenshot goes into your note instead.
 - **Dictation.** With [Voxtype](https://voxtype.io) installed, click the mic to start and stop, or hold it while you talk. Your words are typed where you're writing, and nothing is sent until you press Enter.
 - **Past answers.** Settings → Past answers keeps your recent questions and answers. Opening one lets you read it again; it doesn't pick that conversation back up.
 
@@ -102,7 +102,7 @@ What leaves your computer: your questions, and whatever Omar reads to answer the
 
 What's kept, and for how long:
 
-- **Past answers:** the newest 100. Clear them in Settings, or set `limit = 0` under `[history]` in `~/.config/ask-omar/config.toml` to keep none.
+- **Past answers:** up to the newest 100. Clear them in Settings, or set `limit = 0` under `[history]` in `~/.config/ask-omar/config.toml` to keep none.
 - **Scratchpad:** up to 20 notes of 20,000 characters each. Screenshots added to a note are private copies, and deleting the note doesn't delete them.
 - **A question you started but didn't send:** comes back for up to 24 hours.
 - **Pi's background log:** private, and trimmed to its last 1 MiB whenever a new conversation starts.
@@ -123,7 +123,7 @@ make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 omarchy-restart-shell
 ```
 
-Don't skip the last line: the bar keeps running the old widget until the shell restarts. `omarchy plugin update` only updates the widget, not the background service. If you use it anyway, the new widget shows "Finish updating Ask Omar" until you run the steps above.
+Don't skip the last line: the bar keeps running the old widget until the shell restarts. `omarchy plugin update` only updates the widget, not the background service. If you use it anyway, the new widget shows "Finish updating Ask Omar" and tells you what's left to do.
 
 ## Remove
 
@@ -133,7 +133,7 @@ make uninstall
 omarchy plugin remove ask-omar.assistant
 ```
 
-`make uninstall` switches the widget off and removes the background service, commands and app-menu entries, leaving alone any you've edited. Then it asks whether to delete your notes, history and settings too. The answer defaults to no, and if you keep them they come back when you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and your provider sign-ins aren't touched, and nothing your provider holds is erased.
+`make uninstall` switches the widget off and removes the background service, commands and app-menu entries, leaving alone any you've edited. When you run it in a terminal, it then asks whether to delete your notes, history and settings too. The answer defaults to no, and if you keep them they come back when you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and your provider sign-ins aren't touched, and nothing your provider holds is erased.
 
 ## Troubleshooting
 
