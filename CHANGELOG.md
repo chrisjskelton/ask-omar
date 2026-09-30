@@ -6,6 +6,7 @@
 - `make setup` no longer runs the developer tests, so it finishes in seconds with a few lines of output.
 - `make uninstall` asks whether to delete your notes, history and settings too.
 - The warning for a permanent delete no longer calls a single file a "recursive" delete when its name contains hyphens.
+- After an update, if the bar is still running the old widget, Ask Omar now tells you to run `omarchy-restart-shell` instead of running setup again.
 
 ## 0.1.5 — Fixes from a full review of 0.1.4
 

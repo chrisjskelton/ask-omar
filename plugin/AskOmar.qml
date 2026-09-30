@@ -1623,11 +1623,26 @@ BarWidget {
     if (healthStatus === "missing")
       return "Ask Omar couldn't find Pi, the separate app that runs its AI requests. Install it from https://pi.dev, then check again. Scratchpad and capture are available now."
     if (healthStatus === "checking") return "Looking for Pi and local provider credentials."
+    if (healthStatus === "update" && versionIsNewer(serviceVersion, widgetVersion))
+      return "Ask Omar's background service is " + serviceVersion + ", but the bar is still running the "
+        + widgetVersion + " widget. Run omarchy-restart-shell in a terminal to load the new one."
     if (healthStatus === "update")
-      return "The Ask Omar widget (" + widgetVersion + ") and its background service ("
-        + (serviceVersion !== "" ? serviceVersion : "older version")
-        + ") don't match. Follow the Install steps in Ask Omar's README to check out the new release commit and run make setup with it, then check again."
+      return "The Ask Omar widget (" + widgetVersion + ") is newer than its background service ("
+        + (serviceVersion !== "" ? serviceVersion : "an older version")
+        + "). In Ask Omar's plugin folder, run make setup as in the README's update steps, then check again."
     return healthMessage !== "" ? healthMessage : "Ask Omar couldn't check Pi. Scratchpad and capture are still available."
+  }
+
+  // True when dotted version a (e.g. "0.1.10") is later than b.
+  function versionIsNewer(a, b) {
+    var left = String(a || "").split(".")
+    var right = String(b || "").split(".")
+    for (var i = 0; i < Math.max(left.length, right.length); i++) {
+      var x = parseInt(left[i] || "0", 10) || 0
+      var y = parseInt(right[i] || "0", 10) || 0
+      if (x !== y) return x > y
+    }
+    return false
   }
 
   function appendScratchpadText(text) {
