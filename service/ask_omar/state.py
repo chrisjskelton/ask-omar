@@ -27,8 +27,8 @@ class StateStore:
         self._lock = threading.RLock()
         self.load()
 
-    def _set_aside(self, problem: str) -> None:
-        """Keep an unusable state file instead of overwriting it with empty data."""
+    def _set_aside(self, problem: str, loaded_what: str = "empty notes and history") -> None:
+        """Keep an unusable state file instead of overwriting it."""
         stamp = time.strftime("%Y%m%d-%H%M%S")
         try:
             # Link under a new name, then drop the original. os.link never
@@ -53,7 +53,7 @@ class StateStore:
             return
         self.warning = (
             f"Ask Omar's saved notes file {problem}. It was kept as {kept.name} "
-            "and Ask Omar started with empty notes and history."
+            f"and Ask Omar started with {loaded_what}."
         )
 
     def _block_saves(self, message: str) -> None:
@@ -86,6 +86,9 @@ class StateStore:
                 self._set_aside("is in a format this version does not recognise")
                 return
             if isinstance(raw, dict):
+                # Load what is readable, but never silently drop the rest: if
+                # anything is skipped, the original file is kept aside.
+                damaged = False
                 history = raw.get("history")
                 if isinstance(history, list):
                     self.data["history"] = [
@@ -93,6 +96,9 @@ class StateStore:
                         if isinstance(item, dict)
                         and all(isinstance(item.get(field), str) for field in ("query", "response", "kind"))
                     ]
+                    damaged = len(self.data["history"]) != len(history)
+                elif history is not None:
+                    damaged = True
                 for key in ("draft", "scratchpad"):
                     value = raw.get(key)
                     if value is None or (
@@ -101,13 +107,24 @@ class StateStore:
                         and isinstance(value.get("at"), (int, float))
                     ):
                         self.data[key] = value
+                    else:
+                        damaged = True
                 notes = raw.get("scratchpad_notes")
-                if isinstance(notes, list) and all(isinstance(note, str) for note in notes):
-                    self.data["scratchpad_notes"] = notes[: self.max_scratchpad_notes]
+                if isinstance(notes, list):
+                    readable = [note for note in notes if isinstance(note, str)]
+                    self.data["scratchpad_notes"] = readable[: self.max_scratchpad_notes]
+                    damaged = damaged or len(self.data["scratchpad_notes"]) != len(notes)
+                elif notes is not None:
+                    damaged = True
+                if damaged:
+                    self._set_aside(
+                        "had entries Ask Omar could not read",
+                        "everything it could read",
+                    )
             if self.history_limit <= 0:
                 had_history = bool(self.data["history"])
                 self.data["history"] = []
-                if had_history:
+                if had_history and not self._save_block:
                     self._save_unlocked()
             else:
                 self.data["history"] = self.data["history"][: self.history_limit]

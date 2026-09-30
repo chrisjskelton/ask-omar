@@ -128,7 +128,11 @@ else:
     env = dict(os.environ, PI_OFFLINE="1")
     try:
         result = subprocess.run(
-            ["pi", "--help"], capture_output=True, text=True, timeout=5, env=env, check=False
+            [
+                "pi", "--help", "--no-extensions", "--no-skills",
+                "--no-prompt-templates", "--no-themes", "--no-context-files",
+            ],
+            capture_output=True, text=True, timeout=5, env=env, check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         print("Pi was found, but its supported options could not be checked locally.")

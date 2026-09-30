@@ -120,7 +120,8 @@ class QmlBehaviorTests(unittest.TestCase):
         run_node(script)
 
     def test_backend_guidance_and_plain_answer_rendering(self):
-        self.assertIn("Install Ask Omar from the marketplace, or run make setup", QML)
+        self.assertIn("Follow the Install steps in Ask Omar's README to run make setup", QML)
+        self.assertNotIn("from its source directory", QML)
         self.assertNotIn("TextEdit.MarkdownText", QML)
         self.assertIn("textFormat: TextEdit.PlainText", QML)
 
@@ -216,7 +217,8 @@ class QmlBehaviorTests(unittest.TestCase):
             'const commands = [];',
             'const context = {queryText:"", replyText:"", busy:false, queryProcess:{running:false},',
             '  conversationTurns:[], resultVisible:false, errorText:"",',
-            '  aiUnavailable:()=>true, checkHealth:()=>{}, draftSaveProcess:{running:false},',
+            '  appendConversationTurn:()=>{}, clearPendingConfirmation:()=>{},',
+            '  draftSaveTimer:{stop:()=>{}}, slowHintTimer:{restart:()=>{}}, draftSaveProcess:{running:false},',
             '  scratchpadSaveProcess:{running:false}, draftVersion:1, scratchpadVersion:1,',
             '  scratchpadNotes:[""], draftSaveState:"pending", draftSaveError:"",',
             '  scratchpadSaveState:"pending", scratchpadSaveError:"",',
@@ -228,6 +230,8 @@ class QmlBehaviorTests(unittest.TestCase):
             'assert.equal(vm.runInContext(`characterCount("😀")`, context), 1);',
             'vm.runInContext(`submit("😀".repeat(2000))`, context);',
             'assert.equal(context.errorText, "");',
+            'assert.equal(commands.at(-1), emoji.repeat(2000));',
+            'context.busy = false; context.queryProcess.running = false;',
             'vm.runInContext(`submit("😀".repeat(2001))`, context);',
             'assert.match(context.errorText, /2,000 characters/);',
             'context.queryText = emoji.repeat(2000); context.draftSaveProcess.running = false;',
@@ -243,6 +247,26 @@ class QmlBehaviorTests(unittest.TestCase):
             'context.scratchpadNotes = [emoji.repeat(20001)]; context.scratchpadSaveProcess.running = false;',
             'vm.runInContext(`saveScratchpad()`, context);',
             'assert.equal(context.scratchpadSaveState, "error");',
+        ))
+        run_node(script)
+
+    def test_questions_are_sent_even_when_pi_is_not_ready(self):
+        # Links and Google searches don't need Pi, and a refused request must
+        # reach the backend so it can end any temporary command grant.
+        script = "\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const sent = [];',
+            'const context = {queryText:"", replyText:"", busy:false, queryProcess:{running:false},',
+            '  conversationTurns:[], resultVisible:false, errorText:"",',
+            '  healthChecked:true, healthStatus:"signin",',
+            '  appendConversationTurn:()=>{}, clearPendingConfirmation:()=>{}, saveDraft:()=>{},',
+            '  draftSaveTimer:{stop:()=>{}}, slowHintTimer:{restart:()=>{}},',
+            '  startStdinCommand:(proc,argv,body)=>{sent.push([argv.join(" "), body]);proc.running=true} };',
+            'vm.createContext(context);',
+            functions("characterCount", "submit"),
+            'vm.runInContext(`submit("google Omarchy")`, context);',
+            'assert.deepEqual(sent, [["ask-omar query --stdin", "google Omarchy"]]);',
+            'assert.equal(context.busy, true);',
         ))
         run_node(script)
 

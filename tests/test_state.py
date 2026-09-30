@@ -123,15 +123,46 @@ class StateStoreTests(unittest.TestCase):
             store.set_draft("still saved")
             self.assertEqual(StateStore(path).history(), [])
 
-    def test_malformed_state_collections_are_ignored(self):
+    def test_unreadable_entries_are_kept_aside_and_readable_ones_loaded(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
-            path.write_text('{"version":1,"events":"bad","history":{"bad":true},"draft":{"text":"bad","at":"bad"}}')
+            original = (
+                '{"version":1,"history":[{"query":"q","response":"r","kind":"assistant"},{"bad":true}],'
+                '"draft":{"text":"bad","at":"bad"},"scratchpad_notes":["keep me",null]}'
+            )
+            path.write_text(original)
             store = StateStore(path)
-            self.assertEqual(store.history(), [])
+            kept = list(path.parent.glob("state.json.unreadable-*"))
+            self.assertEqual(len(kept), 1)
+            self.assertEqual(kept[0].read_text(), original)
+            self.assertIn("could not read", store.warning)
+            self.assertEqual([item["query"] for item in store.history()], ["q"])
+            self.assertEqual(store.scratchpad_notes(), ["keep me"])
             self.assertEqual(store.draft(), "")
             store.set_draft("example")
             self.assertEqual(StateStore(path).draft(), "example")
+            self.assertEqual(kept[0].read_text(), original)
+
+    def test_unknown_top_level_fields_are_not_damage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text('{"version":1,"events":"from an older version","history":[]}')
+            store = StateStore(path)
+            self.assertEqual(store.warning, "")
+            self.assertEqual(list(path.parent.glob("state.json.unreadable-*")), [])
+
+    def test_damaged_state_that_cannot_be_moved_does_not_crash_with_history_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            path.write_text(
+                '{"version":1,"history":[{"query":"q","response":"r","kind":"assistant"},1]}'
+            )
+            with patch("ask_omar.state.os.link", side_effect=PermissionError(13, "Permission denied")):
+                store = StateStore(path, history_limit=0)
+            self.assertIn("could not be moved aside", store.warning)
+            with self.assertRaises(ValueError):
+                store.set_draft("blocked")
+            self.assertIn('"query":"q"', path.read_text())
 
     def assert_set_aside(self, path: Path, contents: bytes) -> StateStore:
         path.write_bytes(contents)

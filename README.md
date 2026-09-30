@@ -19,11 +19,11 @@ Ask Omar runs with your user permissions and isn't a sandbox. By default, **Ask 
 
 Try “What's the shortcut to move a window to workspace 2?” or a small task such as “Sort the files in ~/ask-omar-demo into folders by type.” Omar can read and search your files and, with the access you choose, run shell commands, starting in your home folder. Results depend on your model and installed tools.
 
-Requests that start with “google”, “search google”, “search the web” or “web search” (for example “google Hyprland gaps”) open a Google search in your browser instead of going to the AI. That includes any request whose first word is “Google”. “open https://…” opens that link directly.
+A request that starts with a search phrase such as “google”, “search google” or “search the web”, followed by what to search for (for example “google Hyprland gaps”), opens a Google search in your browser instead of going to the AI. “open https://…” opens that link directly. Both work even before Pi is set up.
 
 ## What Pi does
 
-Pi does the AI work. You install Pi and sign in to your provider there; Ask Omar doesn't handle or store that sign-in. Ask Omar starts Pi in the background with a fixed set of tools: it can read and search your files, and it runs shell commands only through Ask Omar's safety modes. Pi's own Bash tool is off. Your own Pi extensions, skills and context files aren't loaded, and Pi runs without a saved session, so the conversation lives only in memory.
+Pi does the AI work. You install Pi and sign in to your provider there; Ask Omar doesn't handle or store that sign-in. Ask Omar starts Pi in the background with a fixed set of tools: it can read and search your files, and it runs shell commands only through Ask Omar's safety modes. Pi's own Bash tool is off. Your own Pi extensions, skills and context files aren't loaded, including when Ask Omar lists models or checks your sign-in, and Pi runs without a saved session, so the conversation lives only in memory.
 
 ## Requirements
 
@@ -70,7 +70,20 @@ A marketplace listing is discovery, not a security certification.
 
 ### Moving from an older clone install
 
-Before 0.1.4, Ask Omar could also be installed with `git clone` and `make install`, which copied the widget into Omarchy's plugin folder. To switch, run `make uninstall` in that clone (your settings and notes are kept), then follow the steps above. You can delete the old clone afterwards.
+Before 0.1.4, Ask Omar could also be installed with `git clone` and `make install`, which copied the widget into Omarchy's plugin folder. To switch:
+
+1. In your old clone, check out the new release commit, so you use the current uninstaller rather than the older one:
+
+   ```bash
+   # Copy the full 40-character commit from the latest release notes:
+   ASK_OMAR_COMMIT=<full 40-character commit>
+   git fetch origin
+   git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
+   ```
+
+2. Run `make uninstall`. Your Ask Omar settings and notes are kept. Omarchy forgets the widget's place in the bar and its bar settings, so you may need to set those again.
+3. If uninstall says it left files in the plugin folder because you changed them, move that folder somewhere safe.
+4. Follow the steps above. You can delete the old clone afterwards.
 
 ## Permissions and the guard
 
@@ -87,7 +100,7 @@ Choose a mode in Settings → Safety:
 | **Block Commands** | No shell commands. Omar can still read and search your files. |
 | **Always Allow — Dangerous** | Every command runs without asking, including destructive ones. Choosing it in Settings needs a separate confirmation. |
 
-If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. Commands stop after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Stop cancels the current task, but **doesn't undo anything already done**.
+If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. A command is stopped after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Anything it leaves running in the background is stopped when the conversation ends. Stop cancels the current task, but **doesn't undo anything already done**.
 
 **The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: recursive forced deletion (`rm -rf`), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
 
@@ -105,7 +118,7 @@ No Ask Omar telemetry is implemented. Notes, drafts and recent answers are store
 | Conversation context | In Pi memory; the next request after 30 idle minutes starts fresh. |
 | Agent log | Private local stderr log, trimmed to its last 1 MiB whenever a new conversation starts. |
 
-State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `${XDG_CONFIG_HOME:-~/.config}/ask-omar`. If the saved-state file is corrupt, too large or in an unknown format, Ask Omar keeps it as `state.json.unreadable-…`, starts with empty notes, and says so in Scratchpad. If it can't be opened or moved aside, it is left in place and saves are refused. Local data is protected by user permissions, not encrypted by Ask Omar. Clipboard managers may retain copied content. Answers are displayed as plain text so remote images in model output are not automatically loaded.
+State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `${XDG_CONFIG_HOME:-~/.config}/ask-omar`. If the saved-state file is corrupt, too large, in an unknown format or has entries Ask Omar can't read, Ask Omar keeps the original as `state.json.unreadable-…`, starts with whatever it could read, and says so in Scratchpad. If it can't be opened or moved aside, it is left in place and saves are refused. Local data is protected by user permissions, not encrypted by Ask Omar. Clipboard managers may retain copied content. Answers are displayed as plain text so remote images in model output are not automatically loaded.
 
 ## Update and remove
 
@@ -141,12 +154,12 @@ Remove original captures separately if wanted. Local deletion does not erase pro
 ## Troubleshooting
 
 - **Checkout verification fails:** copy the full 40-character commit from the release notes, run `git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"` in the plugin folder, and remove or preserve any local changes before retrying `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`.
-- **Widget says backend missing, or “Finish updating Ask Omar”:** in the plugin folder, check out the release commit as above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`.
-- **`omarchy plugin add` says the plugin is already installed:** an older copied widget is still there. See [Moving from an older clone install](#moving-from-an-older-clone-install).
+- **Widget says the background service isn't installed, or “Finish updating Ask Omar”:** in the plugin folder, check out the release commit as above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`.
+- **`omarchy plugin add` says the plugin is already installed:** an older copied widget is still there, or uninstall left files you had changed. See [Moving from an older clone install](#moving-from-an-older-clone-install).
 - **Pi missing or disconnected:** install Pi, sign in within `pi` using `/login`, and rerun `ask-omar setup`.
 - **Service problem:** run `systemctl --user status ask-omar.service` and `journalctl --user -u ask-omar.service -n 40`. Inspect logs for private content before sharing.
 - **No mic:** install and configure Omarchy Dictation/Voxtype. The mic is optional.
-- **Save error:** keep the editor open, correct the length or storage problem and retry. Don't discard unsaved text.
+- **Save error:** keep the editor open and fix what the error names, such as text that's too long. If it says the notes file couldn't be read or moved aside, fix the file's permissions, run `systemctl --user restart ask-omar.service`, then save again. Your unsaved text stays in the editor.
 - **Model setting problem:** choose a model Pi lists. Pi's auth/RPC interface must support the flags used by this release.
 
 ## How it fits together

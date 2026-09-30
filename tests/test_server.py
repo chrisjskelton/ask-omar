@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -403,6 +404,21 @@ class LocalAnswerTests(unittest.TestCase):
         self.assertEqual(command[:3], ["pi", "auth", "check"])
 
     @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
+    def test_pi_calls_never_load_the_users_own_pi_resources(self, _which):
+        completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with patch("ask_omar.server.subprocess.run", return_value=completed) as run:
+            self.omar.health()
+            self.omar.list_models()
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual([command[:2] for command in commands], [["pi", "auth"], ["pi", "--list-models"]])
+        for command in commands:
+            for flag in (
+                "--no-extensions", "--no-skills", "--no-prompt-templates",
+                "--no-themes", "--no-context-files",
+            ):
+                self.assertIn(flag, command)
+
+    @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
     def test_health_maps_pi_not_ready_and_invalid_to_signin(self, _which):
         for pi_status in ("not_ready", "invalid"):
             completed = subprocess.CompletedProcess(
@@ -424,6 +440,27 @@ class LocalAnswerTests(unittest.TestCase):
             # An explicit check from Settings always asks Pi again.
             self.omar.health()
             self.assertEqual(run.call_count, 2)
+
+    @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
+    def test_sign_in_is_cached_for_the_provider_that_was_checked(self, _which):
+        first = self.omar.config.provider
+        other = "anthropic" if first != "anthropic" else "openai-codex"
+        checked = []
+
+        def pi_auth_check(command, **_kwargs):
+            checked.append(command[command.index("--provider") + 1])
+            if len(checked) == 1:
+                # Settings saves a new provider while Pi is still checking the old one.
+                self.omar.config = replace(self.omar.config, provider=other)
+                return subprocess.CompletedProcess(command, 0, '{"status":"ready"}', "")
+            return subprocess.CompletedProcess(command, 1, '{"status":"not_ready"}', "")
+
+        with patch("ask_omar.server.subprocess.run", side_effect=pi_auth_check):
+            self.omar.health()
+            result = self.omar.health(refresh=False)
+
+        self.assertEqual(checked, [first, other])
+        self.assertEqual(result["agent"]["status"], "signin")
 
     @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
     def test_failed_sign_in_checks_are_never_reused(self, _which):

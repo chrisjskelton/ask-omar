@@ -36,6 +36,11 @@ from .state import StateStore
 
 
 AUTH_CHECK_CACHE_SECONDS = 10 * 60
+# Keep the user's own Pi extensions, skills and context out of every Pi call,
+# not only the AI session: listing models or checking sign-in loads them too.
+PI_WITHOUT_USER_RESOURCES = (
+    "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
+)
 MAX_SCRATCHPAD_ATTACHMENT_BYTES = 25 * 1024 * 1024
 MAX_REQUEST_BYTES = 5 * 1024 * 1024
 SCRATCHPAD_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -255,7 +260,7 @@ class AskOmar:
         if not provider or not model:
             try:
                 completed = subprocess.run(
-                    ["pi", "--list-models"],
+                    ["pi", "--list-models", *PI_WITHOUT_USER_RESOURCES],
                     capture_output=True,
                     text=True,
                     timeout=15,
@@ -298,7 +303,7 @@ class AskOmar:
             )
         try:
             completed = subprocess.run(
-                ["pi", "--list-models"],
+                ["pi", "--list-models", *PI_WITHOUT_USER_RESOURCES],
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -489,13 +494,16 @@ class AskOmar:
                 "message": "Pi found and provider credentials are available locally.",
             }
         else:
+            # Settings can change the provider while Pi is checking; cache and
+            # report the result for the provider that was actually checked.
+            provider = self.config.provider
             self.auth_ready_cache = None
             try:
                 check = subprocess.run(
                     [
                         "pi", "auth", "check",
-                        "--provider", self.config.provider,
-                        "--json", "--no-refresh",
+                        "--provider", provider,
+                        "--json", "--no-refresh", *PI_WITHOUT_USER_RESOURCES,
                     ],
                     capture_output=True,
                     text=True,
@@ -512,14 +520,14 @@ class AskOmar:
                         "auth_type": str(raw.get("authType", "")),
                     }
                     self.auth_ready_cache = (
-                        self.config.provider,
+                        provider,
                         time.monotonic() + AUTH_CHECK_CACHE_SECONDS,
                     )
                 elif pi_status in ("not_ready", "invalid"):
                     agent_ready = {
                         "status": "signin",
                         "code": f"pi_{pi_status}",
-                        "message": f"Open Pi and connect {self.config.provider} before sending AI requests.",
+                        "message": f"Open Pi and connect {provider} before sending AI requests.",
                     }
                 else:
                     agent_ready = {

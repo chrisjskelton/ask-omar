@@ -92,7 +92,7 @@ BarWidget {
   property string micState: "idle"
   property bool voxtypeAvailable: true
   // Must match manifest.json and the service's __version__ (tests enforce it).
-  readonly property string widgetVersion: "0.1.4"
+  readonly property string widgetVersion: "0.1.5"
   property string serviceVersion: ""
   property string stateWarning: ""
   property string healthStatus: "unknown"
@@ -1006,15 +1006,8 @@ BarWidget {
       resultVisible = true
       return
     }
-    if (aiUnavailable()) {
-      resultVisible = conversationTurns.length > 0
-      panelView = "chat"
-      historyPreview = null
-      historyItemResponse = ""
-      settingsExpanded = false
-      checkHealth()
-      return
-    }
+    // Always send: links and Google searches work without Pi, and a request
+    // the backend refuses because Pi isn't ready also ends any command grant.
     queryText = value
     submittedQuery = value
     pendingActionId = ""
@@ -1592,10 +1585,6 @@ BarWidget {
     return !!options && Array.prototype.indexOf.call(options, option) >= 0
   }
 
-  function aiUnavailable() {
-    return healthChecked && healthStatus !== "ready" && healthStatus !== "checking"
-  }
-
   function systemAccessLabel() {
     if (healthSystemAccess === "off") return "Block Commands"
     if (healthSystemAccess === "full") return "Ask for Recognized Risks"
@@ -1626,7 +1615,7 @@ BarWidget {
     if (healthStatus === "update")
       return "The Ask Omar widget (" + widgetVersion + ") and its background service ("
         + (serviceVersion !== "" ? serviceVersion : "older version")
-        + ") don't match. In Ask Omar's plugin folder, check out the release commit and run make setup, then check again."
+        + ") don't match. Follow the Install steps in Ask Omar's README to check out the new release commit and run make setup with it, then check again."
     return healthMessage !== "" ? healthMessage : "Ask Omar couldn't check Pi. Scratchpad and capture are still available."
   }
 
@@ -1833,7 +1822,8 @@ BarWidget {
     }
     if (!result.ok) {
       errorText = String(result.error || "Ask Omar could not complete that request.")
-      if (String(result.error_code || "").indexOf("pi_") === 0) checkHealth()
+      var errorCode = String(result.error_code || "")
+      if (errorCode.indexOf("pi_") === 0 || errorCode === "agent_unset") checkHealth()
       failedQuery = submittedQuery
       failedActionId = pendingActionId
       submittedQuery = ""
@@ -2014,7 +2004,7 @@ BarWidget {
     onExited: function(exitCode, exitStatus) {
       root.backendInstalled = exitCode === 0
       if (!root.backendInstalled)
-        root.errorText = "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
+        root.errorText = "Ask Omar's background service isn't installed. Follow the Install steps in Ask Omar's README to run make setup."
     }
   }
 
@@ -2251,8 +2241,8 @@ BarWidget {
       root.reveal()
       if (exitCode !== 0)
         root.errorText = root.backendInstalled
-          ? "Ask Omar could not start its service. Check the installation, or run make setup from its source directory."
-          : "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
+          ? "Ask Omar couldn't start its background service. Follow the Install steps in Ask Omar's README to run make setup again."
+          : "Ask Omar's background service isn't installed. Follow the Install steps in Ask Omar's README to run make setup."
       if (showSettings) {
         root.settingsExpanded = true
         root.checkHealth()
@@ -4497,7 +4487,7 @@ BarWidget {
           id: scratchpadHelp
           width: parent.width
           text: !root.backendInstalled
-            ? "Ask Omar backend is missing. Install Ask Omar from the marketplace, or run make setup from its source directory."
+            ? "Ask Omar's background service isn't installed. Follow the Install steps in Ask Omar's README to run make setup."
             : root.scratchpadSaveState === "error" ? root.scratchpadSaveError
             : root.stateWarning !== "" ? root.stateWarning
             : root.quitRequested ? "Saving before quit…"

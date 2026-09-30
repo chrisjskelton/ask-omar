@@ -216,7 +216,11 @@ class InstallIntegrationTests(unittest.TestCase):
         pi.chmod(0o755)
         result = self.run_script("install.sh", "--backend-only")
         self.assertIn("Pi supports Ask Omar's required flags", result.stdout)
-        self.assertIn("pi --help offline=1", self.calls())
+        self.assertIn(
+            "pi --help --no-extensions --no-skills --no-prompt-templates "
+            "--no-themes --no-context-files offline=1",
+            self.calls(),
+        )
 
     def test_destination_symlinks_are_refused_before_any_target_changes(self):
         cases = (

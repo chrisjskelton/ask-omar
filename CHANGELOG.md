@@ -1,14 +1,24 @@
 # Changelog
 
+## 0.1.5 — Fixes from a full review of 0.1.4
+
+- A saved-state file that loads but has entries Ask Omar can't read is now kept as `state.json.unreadable-…`, and everything readable is loaded. Before, those entries were dropped and the file was overwritten on the next save.
+- Questions go to the background service even when Pi isn't ready. Links and Google searches now work before Pi is set up, and a question refused because Pi isn't ready ends any temporary command grant, as documented.
+- Listing models, checking your Pi sign-in and the setup check no longer load your own Pi extensions, skills or context files. Only the AI session was isolated before.
+- A sign-in check that overlaps a provider change is cached for the provider it actually checked.
+- The widget's setup messages point to the README's install steps instead of suggesting a bare `make setup`.
+- Moving from an old clone install now uses the current uninstaller, and the README says what happens to bar settings and changed files.
+- The docs say what the 60-second limit covers, which Google search phrases work, and how to recover from a blocked save.
+
 ## 0.1.4 — One install route and safer notes
 
 - Ask Omar now installs one way: `omarchy plugin add` from GitHub, then `make setup` in the plugin folder. `make install` no longer copies the widget, which removes the upgrade path that would have refused future releases. Older copied widgets are detected, and `make uninstall` removes them if unmodified.
 - `make uninstall` never deletes files from a widget checkout; remove the checkout with `omarchy plugin remove`.
 - Setup no longer refuses the Python bytecode caches that uninstalling 0.1.3 or earlier leaves in `~/.local/share/ask-omar`, and the service no longer writes them.
-- An unreadable, oversized or unrecognised saved-state file is kept as `state.json.unreadable-…` instead of being overwritten, and Scratchpad says so. If it can't be moved aside, saves are refused rather than overwriting it.
+- An unreadable, oversized or unrecognized saved-state file is kept as `state.json.unreadable-…` instead of being overwritten, and Scratchpad says so. If it can't be moved aside, saves are refused rather than overwriting it.
 - The widget detects when it and the background service are different versions (for example after `omarchy plugin update`) and asks you to run `make setup`.
 - Questions reuse a successful Pi sign-in check for up to 10 minutes instead of running `pi auth check` and scanning installed apps every time.
-- Only requests that start with “google”, “search google”, “search the web” or “web search” open Google. “search my Downloads for …” now goes to Omar.
+- Only explicit search phrases such as “google …” or “search the web for …” open Google. “search my Downloads for …” now goes to Omar.
 - Ask for Recognized Risks no longer offers “Allow for 15 minutes”, which had no effect in that mode.
 - A temporary command grant now ends whenever the conversation ends, including Stop, a model change, a failed AI request and the idle reset. Previously Stop and model changes kept it.
 - Removed unused action matching, app discovery and usage scoring, and stopped telling the AI about buttons that no longer exist.
@@ -17,7 +27,7 @@
 ## 0.1.3 — Safe managed lifecycle
 
 - Upgrades update managed application files without deleting unknown nested files.
-- Uninstall removes only unchanged files recorded by Ask Omar and preserves modified or unknown content.
+- Uninstall removes application files only when they're unchanged, and preserves modified or unknown content there. Launchers, the service and menu entries are removed when they carry Ask Omar's marker.
 - Managed removal refuses path traversal and never follows nested symlinks.
 - Plugin upgrades and removal preserve modified files, unknown files and marketplace source checkouts.
 - Marketplace setup pins the full release commit before enabling the plugin.

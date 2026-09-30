@@ -271,7 +271,6 @@ class QmlInteractionContractTests(unittest.TestCase):
         self.assertIn("Pi is needed for AI requests", QML)
         self.assertIn("Choose a model in Settings", QML)
         self.assertIn("Don't paste passwords, tokens, or sign-in codes into Ask Omar", QML)
-        self.assertIn("function aiUnavailable()", QML)
 
     def test_idle_notices_remain_visible_during_ai_errors(self):
         line = [row for row in QML.splitlines() if "readonly property bool showIdleNotices" in row][0]
