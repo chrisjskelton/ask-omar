@@ -2,10 +2,10 @@
 
 ## 0.1.6 — Quicker setup and safer deletes
 
-- Omar moves files to the Trash when you ask it to delete something, and asks first before deleting anything permanently.
+- When you ask Omar to delete something, it moves it to the Trash so you can get it back.
 - `make setup` no longer runs the developer tests, so it finishes in seconds with a few lines of output.
 - `make uninstall` asks whether to delete your notes, history and settings too.
-- The warning for a permanent delete no longer calls a single file a "recursive" delete when its name contains hyphens.
+- Deleting a file with hyphens in its name is no longer mistaken for `rm -rf`.
 - After an update, if the bar is still running the old widget, Ask Omar now tells you to run `omarchy-restart-shell` instead of running setup again.
 
 ## 0.1.5 — Fixes from a full review of 0.1.4

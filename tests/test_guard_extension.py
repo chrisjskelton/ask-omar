@@ -126,15 +126,6 @@ class GuardExtensionTests(unittest.TestCase):
             "false \\\\\nrm -rf /tmp/example": "Recursive forced deletion",
             "false \\\r\nrm -rf /tmp/example": "Recursive forced deletion",
             "r'm' -r'f' /tmp/example": "Recursive forced deletion",
-            "rm ./draft.txt": "Permanent deletion",
-            # Hyphens inside a file name are not options.
-            "rm -- ~/ask-omar-functional-test/x.txt": "Permanent deletion",
-            "rm ~/Documents/ask-omar-0.1.4-drafts.md": "Permanent deletion",
-            "unlink ./draft.txt": "Permanent deletion",
-            "find . -name '*.tmp' -delete": "Permanent deletion",
-            "cd ./notes && rm old.txt": "Permanent deletion",
-            "/bin/rm ./draft.txt": "Permanent deletion",
-            "ls *.tmp | xargs rm": "Permanent deletion",
             "shred private.txt": "Secure file overwrite",
             "mkfs.ext4 /dev/sda": "Disk or filesystem erasure",
             "dd if=image.iso of=/dev/sdb": "Raw device write",
@@ -205,6 +196,10 @@ class GuardExtensionTests(unittest.TestCase):
     def test_routine_commands_are_not_flagged(self):
         for command in (
             "ls -la",
+            "rm ./draft.txt",
+            # Hyphens inside a file name are not rm -r/-f options.
+            "rm -- ~/ask-omar-functional-test/x.txt",
+            "rm ~/Documents/ask-omar-0.1.4-drafts.md",
             "gio trash ./draft.txt",
             "gio trash ./rm-notes.txt",
             "ls /tmp/rm-test",

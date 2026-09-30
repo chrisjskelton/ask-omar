@@ -100,9 +100,11 @@ Choose a mode in Settings → Safety:
 | **Block Commands** | No shell commands. Omar can still read and search your files. |
 | **Always Allow — Dangerous** | Every command runs without asking, including destructive ones. Choosing it in Settings needs a separate confirmation. |
 
+When you ask Omar to delete something, it moves it to the Trash so you can get it back.
+
 If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. A command is stopped after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Anything it leaves running in the background is stopped when the conversation ends. Stop cancels the current task, but **doesn't undo anything already done**.
 
-**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: permanent deletion (`rm`; Omar moves things to the Trash instead unless you ask for a permanent delete), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
+**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: recursive forced deletion (`rm -rf`), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
 
 ## Privacy and retention
 
