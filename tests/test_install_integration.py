@@ -285,6 +285,73 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertEqual(sentinel.read_bytes(), b"unrelated user data\n")
         self.assertEqual(self.calls(), "")
 
+    def test_installed_launcher_writes_no_bytecode(self):
+        self.run_script("install.sh", "--backend-only")
+
+        result = subprocess.run(
+            [str(self.home / ".local/bin/ask-omar"), "--version"],
+            env=self.env,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+        self.assertIn("Ask Omar", result.stdout)
+        self.assertEqual(list((self.data / "ask-omar").rglob("__pycache__")), [])
+
+    def test_bytecode_left_by_an_older_uninstall_does_not_block_setup(self):
+        # Before 0.1.4 the running service wrote bytecode next to its modules,
+        # and uninstall removed only recorded files, leaving these caches.
+        self.run_script("install.sh", "--backend-only")
+        app = self.data / "ask-omar"
+        subprocess.run(
+            ["python", "-m", "compileall", "-q", str(app / "service")],
+            check=True,
+        )
+        self.run_script("uninstall.sh", "--backend-only")
+        leftovers = [
+            path.relative_to(app).as_posix() for path in app.rglob("*") if path.is_file()
+        ]
+        self.assertTrue(leftovers)
+        self.assertTrue(all(path.endswith(".pyc") for path in leftovers))
+
+        self.run_script("install.sh", "--backend-only")
+
+        self.assertTrue((app / ".installed-by-ask-omar").is_file())
+        self.assertTrue((app / "service/ask_omar/__main__.py").is_file())
+
+    def test_bytecode_residue_with_anything_else_is_refused(self):
+        cache = self.data / "ask-omar/service/ask_omar/__pycache__"
+        cache.mkdir(parents=True)
+        (cache / "cli.cpython-313.pyc").write_bytes(b"cache")
+        extras = {
+            "user file": lambda app: (app / "keep").write_text("user data\n"),
+            "non-bytecode in cache": lambda app: (
+                app / "service/ask_omar/__pycache__/notes.txt"
+            ).write_text("user data\n"),
+            "bytecode outside the package": lambda app: (app / "stray.pyc").write_bytes(b"x"),
+            "symlinked cache file": lambda app: (
+                app / "service/ask_omar/__pycache__/link.pyc"
+            ).symlink_to(self.home / "elsewhere"),
+            "unreadable directory": lambda app: (app / "service/ask_omar/locked").mkdir(mode=0),
+        }
+        for name, add_extra in extras.items():
+            with self.subTest(name):
+                app = self.data / "ask-omar"
+                add_extra(app)
+                before = self.home_snapshot()
+
+                result = self.run_script("install.sh", "--backend-only", success=False)
+
+                self.assertIn("application directory Ask Omar did not install", result.stderr)
+                self.assertEqual(self.home_snapshot(), before)
+                for path in (app / "keep", app / "stray.pyc", cache / "notes.txt", cache / "link.pyc"):
+                    path.unlink(missing_ok=True)
+                locked = app / "service/ask_omar/locked"
+                if locked.exists():
+                    locked.chmod(0o700)
+                    locked.rmdir()
+
     def test_exact_legacy_application_directories_upgrade_to_marked_install(self):
         for release in ("v0.1.0", REVIEWED_COMMIT):
             with self.subTest(release=release):

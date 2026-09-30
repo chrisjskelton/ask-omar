@@ -48,6 +48,26 @@ ask_omar_owns_app_directory() {
   fi
 }
 
+# Before 0.1.4 the service wrote Python bytecode next to its installed modules,
+# and uninstall (which removes only recorded files) left those caches behind.
+# A directory holding nothing but them is safe to install into: setup only adds
+# known files and never deletes anything there.
+ask_omar_is_bytecode_residue() {
+  local path=$1 kind relative
+  [[ -d $path && ! -L $path && -r $path && -x $path ]] || return 1
+  while IFS=$'\t' read -r -d '' kind relative; do
+    case $kind in
+      d) [[ $relative == service || $relative == service/ask_omar ||
+            $relative == service/ask_omar/* ]] || return 1 ;;
+      f) [[ $relative == service/ask_omar/*.pyc &&
+            ${relative%/*} == */__pycache__ ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+  done < <(find "$path" -mindepth 1 \
+    \( -type d ! \( -readable -executable \) -printf 'unreadable\t%P\0' -prune \) -o \
+    -printf '%y\t%P\0')
+}
+
 ask_omar_valid_app_manifest() {
   local path=$1 hash relative extra
   [[ -f $path && ! -L $path ]] || return 1

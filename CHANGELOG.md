@@ -4,6 +4,7 @@
 
 - Ask Omar now installs one way: `omarchy plugin add` from GitHub, then `make setup` in the plugin folder. `make install` no longer copies the widget, which removes the upgrade path that would have refused future releases. Older copied widgets are detected, and `make uninstall` removes them if unmodified.
 - `make uninstall` never deletes files from a widget checkout; remove the checkout with `omarchy plugin remove`.
+- Setup no longer refuses the Python bytecode caches that uninstalling 0.1.3 or earlier leaves in `~/.local/share/ask-omar`, and the service no longer writes them.
 - An unreadable, oversized or unrecognised saved-state file is kept as `state.json.unreadable-…` instead of being overwritten, and Scratchpad says so. If it can't be moved aside, saves are refused rather than overwriting it.
 - The widget detects when it and the background service are different versions (for example after `omarchy plugin update`) and asks you to run `make setup`.
 - Questions reuse a successful Pi sign-in check for up to 10 minutes instead of running `pi auth check` and scanning installed apps every time.

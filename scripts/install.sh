@@ -76,7 +76,8 @@ for path in \
   refuse_symlink "$path"
 done
 
-if [[ -e $APP_TARGET ]] && ! ask_omar_owns_app_directory "$APP_TARGET"; then
+if [[ -e $APP_TARGET ]] && ! ask_omar_owns_app_directory "$APP_TARGET" &&
+    ! ask_omar_is_bytecode_residue "$APP_TARGET"; then
   fail "refusing to replace an application directory Ask Omar did not install: $APP_TARGET"
 fi
 
@@ -231,8 +232,8 @@ elif [[ ! -L $CONFIG_TARGET ]]; then
 fi
 
 while IFS= read -r line || [[ -n $line ]]; do
-  if [[ $line == 'exec __ASK_OMAR_PYTHON__ -m ask_omar "$@"' ]]; then
-    printf 'exec %q -m ask_omar "$@"\n' "$PYTHON_BIN"
+  if [[ $line == 'exec __ASK_OMAR_PYTHON__ -B -m ask_omar "$@"' ]]; then
+    printf 'exec %q -B -m ask_omar "$@"\n' "$PYTHON_BIN"
   else
     printf '%s\n' "$line"
   fi
