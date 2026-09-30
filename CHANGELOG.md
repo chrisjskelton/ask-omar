@@ -2,10 +2,10 @@
 
 ## 0.1.5 — Fixes from a full review of 0.1.4
 
-- A saved-state file that loads but has entries Ask Omar can't read is now kept as `state.json.unreadable-…`, and everything readable is loaded. Before, those entries were dropped and the file was overwritten on the next save.
-- Questions go to the background service even when Pi isn't ready. Links and Google searches now work before Pi is set up, and a question refused because Pi isn't ready ends any temporary command grant, as documented.
+- A saved-state file that loads but has entries Ask Omar can't read is now kept as `state.json.unreadable-…`, and everything readable is loaded and saved straight away. If that save fails, Scratchpad says so. Before, those entries were dropped and the file was overwritten on the next save.
+- Questions go to the background service even when Pi isn't ready. They still wait while the widget and service are from different releases. Links and Google searches now work before Pi is set up, and a question refused because Pi isn't ready ends any temporary command grant, as documented.
 - Listing models, checking your Pi sign-in and the setup check no longer load your own Pi extensions, skills or context files. Only the AI session was isolated before.
-- A sign-in check that overlaps a provider change is cached for the provider it actually checked.
+- A sign-in check that overlaps a provider change is cached and reported for the provider it actually checked.
 - The widget's setup messages point to the README's install steps instead of suggesting a bare `make setup`.
 - Moving from an old clone install now uses the current uninstaller, and the README says what happens to bar settings and changed files.
 - Updates now end with `omarchy-restart-shell`. The running bar keeps the old widget until the shell restarts, which the docs and setup output didn't say.

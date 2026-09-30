@@ -461,11 +461,14 @@ class AskOmar:
 
     def health(self, refresh: bool = True) -> dict[str, Any]:
         self.seed_agent_defaults()
-        if self.config.backend != "pi":
+        # Settings can change the provider while Pi is checking. Describe the
+        # agent from one config read so the reply matches what was checked.
+        config = self.config
+        if config.backend != "pi":
             agent_ready: dict[str, Any] = {
                 "status": "error",
                 "code": "unsupported_backend",
-                "message": f"Ask Omar does not support the {self.config.backend} backend.",
+                "message": f"Ask Omar does not support the {config.backend} backend.",
             }
         elif not shutil.which("pi"):
             agent_ready = {
@@ -473,7 +476,7 @@ class AskOmar:
                 "code": "pi_missing",
                 "message": "Ask Omar couldn't find Pi, the separate app that runs its AI requests.",
             }
-        elif not self.config.agent_identity_ready:
+        elif not config.agent_identity_ready:
             agent_ready = {
                 "status": "configure",
                 "code": "agent_unset",
@@ -485,7 +488,7 @@ class AskOmar:
         elif (
             not refresh
             and self.auth_ready_cache is not None
-            and self.auth_ready_cache[0] == self.config.provider
+            and self.auth_ready_cache[0] == config.provider
             and time.monotonic() < self.auth_ready_cache[1]
         ):
             agent_ready = {
@@ -494,9 +497,7 @@ class AskOmar:
                 "message": "Pi found and provider credentials are available locally.",
             }
         else:
-            # Settings can change the provider while Pi is checking; cache and
-            # report the result for the provider that was actually checked.
-            provider = self.config.provider
+            provider = config.provider
             self.auth_ready_cache = None
             try:
                 check = subprocess.run(
@@ -544,10 +545,10 @@ class AskOmar:
         return self.response(
             kind="health",
             version=__version__,
-            backend=self.config.backend,
-            provider=self.config.provider,
-            model=self.config.model,
-            thinking=self.config.thinking,
+            backend=config.backend,
+            provider=config.provider,
+            model=config.model,
+            thinking=config.thinking,
             system_access=self.config.system_access,
             agent=agent_ready,
             conversation={

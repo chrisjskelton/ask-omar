@@ -1006,8 +1006,19 @@ BarWidget {
       resultVisible = true
       return
     }
-    // Always send: links and Google searches work without Pi, and a request
-    // the backend refuses because Pi isn't ready also ends any command grant.
+    // A service from another release may not understand this widget, so wait
+    // for make setup. Otherwise always send: links and Google searches work
+    // without Pi, and a request the backend refuses because Pi isn't ready
+    // also ends any command grant.
+    if (healthChecked && healthStatus === "update") {
+      resultVisible = conversationTurns.length > 0
+      panelView = "chat"
+      historyPreview = null
+      historyItemResponse = ""
+      settingsExpanded = false
+      checkHealth()
+      return
+    }
     queryText = value
     submittedQuery = value
     pendingActionId = ""

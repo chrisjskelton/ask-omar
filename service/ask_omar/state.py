@@ -133,8 +133,12 @@ class StateStore:
                 # it is still there after a restart.
                 try:
                     self._save_unlocked()
-                except (OSError, ValueError):
-                    pass
+                except (OSError, ValueError) as error:
+                    reason = error.strerror if isinstance(error, OSError) and error.strerror else error
+                    self.warning += (
+                        f" It could not save what it read ({reason}), so if it restarts before "
+                        "your next change is saved, it will start empty. The kept copy is complete."
+                    )
 
     def save(self) -> None:
         with self._lock:

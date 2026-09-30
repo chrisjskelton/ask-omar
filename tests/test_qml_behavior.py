@@ -216,7 +216,7 @@ class QmlBehaviorTests(unittest.TestCase):
             'const vm = require("node:vm"); const assert = require("node:assert/strict");',
             'const commands = [];',
             'const context = {queryText:"", replyText:"", busy:false, queryProcess:{running:false},',
-            '  conversationTurns:[], resultVisible:false, errorText:"",',
+            '  conversationTurns:[], resultVisible:false, errorText:"", healthChecked:false,',
             '  appendConversationTurn:()=>{}, clearPendingConfirmation:()=>{},',
             '  draftSaveTimer:{stop:()=>{}}, slowHintTimer:{restart:()=>{}}, draftSaveProcess:{running:false},',
             '  scratchpadSaveProcess:{running:false}, draftVersion:1, scratchpadVersion:1,',
@@ -267,6 +267,24 @@ class QmlBehaviorTests(unittest.TestCase):
             'vm.runInContext(`submit("google Omarchy")`, context);',
             'assert.deepEqual(sent, [["ask-omar query --stdin", "google Omarchy"]]);',
             'assert.equal(context.busy, true);',
+        ))
+        run_node(script)
+
+    def test_questions_wait_for_setup_when_widget_and_service_do_not_match(self):
+        script = "\n".join((
+            'const vm = require("node:vm"); const assert = require("node:assert/strict");',
+            'const sent = []; let checks = 0;',
+            'const context = {queryText:"", busy:false, queryProcess:{running:false},',
+            '  conversationTurns:[], resultVisible:false, errorText:"", panelView:"history",',
+            '  healthChecked:true, healthStatus:"update", checkHealth:()=>{checks++},',
+            '  startStdinCommand:(proc,argv,body)=>{sent.push(body)} };',
+            'vm.createContext(context);',
+            functions("characterCount", "submit"),
+            'vm.runInContext(`submit("google Omarchy")`, context);',
+            'assert.deepEqual(sent, []);',
+            'assert.equal(checks, 1);',
+            'assert.equal(context.panelView, "chat");',
+            'assert.equal(context.busy, false);',
         ))
         run_node(script)
 

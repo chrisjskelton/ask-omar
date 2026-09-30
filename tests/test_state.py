@@ -148,6 +148,21 @@ class StateStoreTests(unittest.TestCase):
             self.assertEqual(StateStore(path).draft(), "example")
             self.assertEqual(kept[0].read_text(), original)
 
+    def test_failed_save_of_recovered_notes_is_reported(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            original = '{"version":1,"scratchpad_notes":["keep me",null]}'
+            path.write_text(original)
+            with patch("ask_omar.state.tempfile.mkstemp", side_effect=OSError(28, "No space left on device")):
+                store = StateStore(path)
+            self.assertIn("No space left on device", store.warning)
+            self.assertIn("will start empty", store.warning)
+            self.assertEqual(store.scratchpad_notes(), ["keep me"])
+            kept = list(path.parent.glob("state.json.unreadable-*"))
+            self.assertEqual([p.read_text() for p in kept], [original])
+            store.save_scratchpad_notes(["keep me"])
+            self.assertEqual(StateStore(path).scratchpad_notes(), ["keep me"])
+
     def test_unknown_top_level_fields_are_not_damage(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
