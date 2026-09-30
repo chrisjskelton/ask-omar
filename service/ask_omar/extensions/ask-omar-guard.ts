@@ -154,7 +154,9 @@ const RISK_RULES: RiskRule[] = [
     description: "permanently delete files and folders recursively",
   },
   {
-    pattern: /\b(?:rm|unlink)\b|\bfind\b[^;&|\n]*\s-delete\b/i,
+    // rm or unlink as the command itself (also after ;, &&, |, xargs, sudo…,
+    // or as /bin/rm), not "rm" inside a file name or an option like --rm.
+    pattern: /(?:^|[\n;&|(`]|\$\()\s*(?:(?:sudo|doas|xargs|env|command|exec|nice|nohup|time)\s+(?:-\S+\s+)*)*(?:\S*\/)?(?:rm|unlink)(?=\s|$)|\bfind\b[^;&|\n]*\s-delete\b/i,
     reason: "Permanent deletion",
     description: "delete files permanently instead of moving them to the Trash",
   },
