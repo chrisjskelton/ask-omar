@@ -169,6 +169,18 @@ class InstallIntegrationTests(unittest.TestCase):
                 self.assertIn("refusing to replace a file Ask Omar did not install", result.stderr)
                 self.assertEqual(server.read_text(), "# the user's own file\n")
 
+    def test_setup_refuses_edited_files_in_a_marked_install_without_a_manifest(self):
+        # 0.1.2 installs carry the marker but no manifest.
+        app = self.data / "ask-omar"
+        init = app / "service/ask_omar/__init__.py"
+        init.parent.mkdir(parents=True)
+        (app / ".installed-by-ask-omar").write_text("# Installed by Ask Omar\n")
+        init.write_text("# the user's edited file\n")
+        result = self.run_script("install.sh", success=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("refusing to replace a file Ask Omar did not install", result.stderr)
+        self.assertEqual(init.read_text(), "# the user's edited file\n")
+
     def test_uninstall_deletes_user_data_only_when_the_user_says_yes(self):
         import pty
 

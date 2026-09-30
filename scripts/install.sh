@@ -215,10 +215,19 @@ recorded_hash() {
 }
 matches_older_release() {
   local relative=$1 target=$2 source tag
-  # These two were already matched to exact release hashes to recognise the
-  # directory as an older Ask Omar install.
-  [[ $relative == service/ask_omar/__init__.py || $relative == extensions/ask-omar-guard.ts ]] &&
-    return 0
+  # The exact 0.1.0/0.1.1 files used to recognise an older install, so this
+  # works even in a checkout without release tags.
+  case $relative in
+    service/ask_omar/__init__.py)
+      ask_omar_matches_sha256 "$target" 99f685c4490a478c5f010859d3bd635dfb1c73b59fc207fad499aeb7dbc19735 ||
+        ask_omar_matches_sha256 "$target" a57da2d68176ae3cc78f3166e43f9a06f831f4fbbd3fe76064f1af535902462d
+      ;;
+    extensions/ask-omar-guard.ts)
+      ask_omar_matches_sha256 "$target" f7f0696e3809b7ff3f3494f79bbd7d6f1192100af3d98603a0e87bdb7699f0e0 ||
+        ask_omar_matches_sha256 "$target" 0ee811d84d020ee40d970ba288b8618ae8f7b75bd339ec02ddbeb4af4a558fc9
+      ;;
+    *) false ;;
+  esac && return 0
   source=$relative
   [[ $relative == extensions/* ]] && source="service/ask_omar/$relative"
   for tag in v0.1.0 v0.1.1 v0.1.2; do
