@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 — Quicker setup and safer deletes
+
+- Omar moves files to the Trash when you ask it to delete something, and asks first before deleting anything permanently.
+- `make setup` no longer runs the developer tests, so it finishes in seconds with a few lines of output.
+- `make uninstall` asks whether to delete your notes, history and settings too.
+- The warning for a permanent delete no longer calls a single file a "recursive" delete when its name contains hyphens.
+
 ## 0.1.5 — Fixes from a full review of 0.1.4
 
 - A saved-state file that loads but has entries Ask Omar can't read is now kept as `state.json.unreadable-…`, and everything readable is loaded and saved straight away. If that save fails, Scratchpad says so. Before, those entries were dropped and the file was overwritten on the next save.

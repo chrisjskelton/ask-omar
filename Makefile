@@ -3,7 +3,7 @@ PYTHONPATH := $(CURDIR)/service
 .PHONY: verify test install setup uninstall validate
 
 verify:
-	ASK_OMAR_COMMIT='$(ASK_OMAR_COMMIT)' ./scripts/verify-checkout.sh
+	@ASK_OMAR_COMMIT='$(ASK_OMAR_COMMIT)' ./scripts/verify-checkout.sh
 
 test:
 	PYTHONPATH=$(PYTHONPATH) python -m unittest discover -s tests -v
@@ -18,10 +18,11 @@ install:
 	@echo "Then run make setup in the plugin folder. See README.md#install." >&2
 	@exit 1
 
+# The test suite is for development and CI; setup only checks the release
+# commit and the plugin, then installs.
 setup: verify
-	$(MAKE) test
-	$(MAKE) validate
-	./scripts/install.sh
+	@$(MAKE) --no-print-directory -s validate
+	@./scripts/install.sh
 
 uninstall:
 	./scripts/uninstall.sh

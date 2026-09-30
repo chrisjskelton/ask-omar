@@ -149,9 +149,14 @@ function hasContainerHostAccess(command: string): boolean {
 
 const RISK_RULES: RiskRule[] = [
   {
-    pattern: /\brm\b(?=[^;&|\n]*(?:-[a-z]*r|-[a-z]*R|--recursive|--dir))(?=[^;&|\n]*(?:-[a-z]*f|--force))/i,
+    pattern: /\brm\b(?=[^;&|\n]*\s(?:-[a-z]*r|-[a-z]*R|--recursive|--dir))(?=[^;&|\n]*\s(?:-[a-z]*f|--force))/i,
     reason: "Recursive forced deletion",
     description: "permanently delete files and folders recursively",
+  },
+  {
+    pattern: /\b(?:rm|unlink)\b|\bfind\b[^;&|\n]*\s-delete\b/i,
+    reason: "Permanent deletion",
+    description: "delete files permanently instead of moving them to the Trash",
   },
   {
     pattern: /\bshred\b/i,

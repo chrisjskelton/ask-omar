@@ -143,7 +143,26 @@ if [[ $mode == full ]]; then
   omarchy-shell shell rescanPlugins 2>/dev/null || true
 fi
 
-echo "Ask Omar removed. Pi and its provider sign-ins were not changed."
-echo "Ask Omar's configuration, drafts, history, Scratchpad notes, and attachments were preserved."
-printf 'Remove them manually with: rm -rf -- %q %q\n' \
-  "$CONFIG_HOME/ask-omar" "${XDG_STATE_HOME:-$HOME/.local/state}/ask-omar"
+echo "Ask Omar removed. Pi and its sign-ins were not changed."
+
+# Notes, history and settings are only deleted if the user says so. Without
+# someone at the terminal to answer, they are kept.
+data_dirs=()
+for dir in "$CONFIG_HOME/ask-omar" "${XDG_STATE_HOME:-$HOME/.local/state}/ask-omar"; do
+  if [[ -e $dir || -L $dir ]]; then data_dirs+=("$dir"); fi
+done
+if (( ${#data_dirs[@]} )); then
+  answer=n
+  if [[ -t 0 && -t 1 ]]; then
+    read -r -p "Also delete your Ask Omar notes, history and settings? [y/N] " answer || answer=n
+  fi
+  if [[ $answer == [yY] || $answer == [yY][eE][sS] ]]; then
+    rm -rf -- "${data_dirs[@]}"
+    echo "Your Ask Omar notes, history and settings were deleted."
+  else
+    echo "Your Ask Omar notes, history and settings were kept, so they'll come back if you reinstall."
+    printf 'To delete them later: rm -rf --'
+    printf ' %q' "${data_dirs[@]}"
+    printf '\n'
+  fi
+fi

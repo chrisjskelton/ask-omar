@@ -20,8 +20,9 @@ class InstallContractTests(unittest.TestCase):
         self.assertIn("omarchy plugin validate .", makefile)
         self.assertIn("setup: verify", makefile)
         setup_recipe = makefile[makefile.index("setup: verify"):makefile.index("uninstall:")]
-        self.assertIn("$(MAKE) test", setup_recipe)
-        self.assertIn("$(MAKE) validate", setup_recipe)
+        # Developer tests run in CI, not on the user's machine during setup.
+        self.assertNotIn("test", setup_recipe.replace("--no-print-directory", ""))
+        self.assertIn("$(MAKE) --no-print-directory -s validate", setup_recipe)
         self.assertIn("./scripts/install.sh", setup_recipe)
         install_recipe = makefile[makefile.index("\ninstall:"):makefile.index("setup: verify")]
         self.assertIn("omarchy plugin add", install_recipe)

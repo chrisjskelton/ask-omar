@@ -126,6 +126,12 @@ class GuardExtensionTests(unittest.TestCase):
             "false \\\\\nrm -rf /tmp/example": "Recursive forced deletion",
             "false \\\r\nrm -rf /tmp/example": "Recursive forced deletion",
             "r'm' -r'f' /tmp/example": "Recursive forced deletion",
+            "rm ./draft.txt": "Permanent deletion",
+            # Hyphens inside a file name are not options.
+            "rm -- ~/ask-omar-functional-test/x.txt": "Permanent deletion",
+            "rm ~/Documents/ask-omar-0.1.4-drafts.md": "Permanent deletion",
+            "unlink ./draft.txt": "Permanent deletion",
+            "find . -name '*.tmp' -delete": "Permanent deletion",
             "shred private.txt": "Secure file overwrite",
             "mkfs.ext4 /dev/sda": "Disk or filesystem erasure",
             "dd if=image.iso of=/dev/sdb": "Raw device write",
@@ -196,7 +202,7 @@ class GuardExtensionTests(unittest.TestCase):
     def test_routine_commands_are_not_flagged(self):
         for command in (
             "ls -la",
-            "rm ./draft.txt",
+            "gio trash ./draft.txt",
             "dd if=source.img",
             "chmod -R 755 ./public",
             "chown user:group ./file",

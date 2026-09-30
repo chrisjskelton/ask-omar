@@ -92,7 +92,7 @@ BarWidget {
   property string micState: "idle"
   property bool voxtypeAvailable: true
   // Must match manifest.json and the service's __version__ (tests enforce it).
-  readonly property string widgetVersion: "0.1.5"
+  readonly property string widgetVersion: "0.1.6"
   property string serviceVersion: ""
   property string stateWarning: ""
   property string healthStatus: "unknown"

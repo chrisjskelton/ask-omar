@@ -55,7 +55,7 @@ make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 omarchy plugin enable ask-omar.assistant
 ```
 
-Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs the tests and Omarchy's plugin validation, then installs the background service, launchers and app-menu entries. An existing Ask Omar configuration is kept.
+Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs Omarchy's plugin validation, then installs the background service, launchers and app-menu entries. An existing Ask Omar configuration is kept.
 
 For AI requests, run `pi`, use `/login` to connect your provider, then:
 
@@ -102,7 +102,7 @@ Choose a mode in Settings → Safety:
 
 If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. A command is stopped after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Anything it leaves running in the background is stopped when the conversation ends. Stop cancels the current task, but **doesn't undo anything already done**.
 
-**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: recursive forced deletion (`rm -rf`), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
+**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: permanent deletion (`rm`; Omar moves things to the Trash instead unless you ask for a permanent delete), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
 
 ## Privacy and retention
 
@@ -143,7 +143,7 @@ make uninstall
 omarchy plugin remove ask-omar.assistant
 ```
 
-`make uninstall` removes the service and launchers and disables the widget; `omarchy plugin remove` deletes the widget folder. Pi, its sign-ins, and your Ask Omar configuration and notes are kept. To **permanently delete Ask Omar's saved data** afterwards:
+`make uninstall` removes the service and launchers and disables the widget, then asks whether to delete your Ask Omar notes, history and settings too. If you say no, they're kept and come back if you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and its sign-ins are never changed. To delete the saved data later:
 
 ```bash
 rm -rf -- "${XDG_CONFIG_HOME:-$HOME/.config}/ask-omar" \

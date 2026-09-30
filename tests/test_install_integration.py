@@ -138,7 +138,11 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertEqual(app_file.read_text(), "keep app file\n")
         self.assertEqual(nested_app_file.read_text(), "keep nested app file\n")
         self.assertEqual(stat.S_IMODE(config_file.stat().st_mode), 0o600)
-        self.run_script("uninstall.sh", root=self.plugin)
+        result = self.run_script("uninstall.sh", root=self.plugin)
+        # Nobody at the terminal to answer, so notes and settings are kept and
+        # the user is told how to delete them.
+        self.assertIn("notes, history and settings were kept", result.stdout)
+        self.assertIn("To delete them later: rm -rf --", result.stdout)
         self.assertEqual(config_file.read_text(), "custom config\n")
         self.assertEqual(guard_file.read_text(), "custom guard\n")
         self.assertEqual(state_file.read_text(), "keep notes\n")
@@ -146,6 +150,38 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertEqual(nested_app_file.read_text(), "keep nested app file\n")
         self.assertTrue((self.plugin / "plugin/AskOmar.qml").is_file())
         self.assertIn("omarchy plugin disable ask-omar.assistant", self.calls())
+
+    def test_uninstall_deletes_user_data_only_when_the_user_says_yes(self):
+        import pty
+
+        for answer, deleted in ((b"\n", False), (b"y\n", True)):
+            with self.subTest(answer=answer):
+                self.run_script("install.sh")
+                notes = self.state / "ask-omar/state.json"
+                notes.parent.mkdir(parents=True, exist_ok=True)
+                notes.write_text("notes\n")
+                # Run uninstall in a terminal, as a person would, and answer the question.
+                pid, fd = pty.fork()
+                if pid == 0:
+                    os.execve("/bin/bash", ["bash", str(ROOT / "scripts/uninstall.sh")], self.env)
+                output, asked = b"", False
+                while True:
+                    try:
+                        data = os.read(fd, 1024)
+                    except OSError:
+                        break
+                    if not data:
+                        break
+                    output += data
+                    if not asked and b"[y/N]" in output:
+                        os.write(fd, answer)
+                        asked = True
+                _, status = os.waitpid(pid, 0)
+                os.close(fd)
+                self.assertEqual(os.waitstatus_to_exitcode(status), 0, output.decode(errors="replace"))
+                self.assertTrue(asked, output.decode(errors="replace"))
+                self.assertEqual(notes.exists(), not deleted)
+                self.assertEqual((self.config / "ask-omar").exists(), not deleted)
 
     def test_clean_install_is_fully_removed(self):
         self.run_script("install.sh")
