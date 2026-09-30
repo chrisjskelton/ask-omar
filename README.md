@@ -1,191 +1,162 @@
 # Ask Omar
 
-**An AI assistant in your Omarchy top bar.**
+**A little help, right in your Omarchy top bar.**
 
-Type a question in the top bar. Answers and follow-ups open in a panel beneath it; notes, capture and optional dictation are a click away. Built for Omarchy, powered by [Pi](https://pi.dev).
-
-Ask Omar runs with your user permissions and isn't a sandbox. By default, **Ask First** shows every shell command before it runs. AI requests need Pi and a connected provider; notes, capture and dictation don't.
+Omar handles the quick questions and small desktop jobs that would otherwise send you off to a terminal or a browser. Type in the top bar and the answer opens right underneath. Notes, screenshots and dictation are one click away.
 
 ![Ask Omar beneath the Omarchy top bar, showing a shortcut cheat sheet](docs/media/ask-omar-topbar.png)
 
-[Product page](https://aboutme.md/ask-omar) · [Releases](https://github.com/chrisjskelton/ask-omar/releases) · [Security](SECURITY.md)
+[Install](#install) · [Product page](https://aboutme.md/ask-omar) · [Releases](https://github.com/chrisjskelton/ask-omar/releases) · [Security](SECURITY.md)
 
-## What it does
+Two things to know up front. Omar runs as you, and by default it shows you every shell command and waits for your OK. The AI side runs through [Pi](https://pi.dev), a separate app you install and sign in to. Notes, capture and dictation work without it.
 
-- **Ask, then follow up.** Get help with Omarchy or ask Omar to carry out a small desktop task. Follow-ups share one conversation until it ends: when you press **New** or **Stop**, change the model or safety mode, a request to the AI fails or is blocked because Pi isn't ready, the service restarts, or you come back after 30 idle minutes.
-- **Keep a Scratchpad.** Local notes for paths, prompts and half-written thoughts. Notes aren't sent with your questions; paste in anything you want Omar to see.
-- **Capture and dictate.** Take a screenshot or recording from the bar. Omar copies the file path, or adds a screenshot to Scratchpad. With optional [Voxtype](https://voxtype.io), tap the mic to dictate or hold it while you talk; you choose when to send.
-- **Revisit answers.** Recent questions and answers are in Settings → Past answers. Opening one doesn't reopen that conversation.
+## Things to try
 
-Try “What's the shortcut to move a window to workspace 2?” or a small task such as “Sort the files in ~/ask-omar-demo into folders by type.” Omar can read and search your files and, with the access you choose, run shell commands, starting in your home folder. Results depend on your model and installed tools.
+- *What's the shortcut to move a window to workspace 2?*
+- *Switch to the next wallpaper.*
+- *Sort the files in ~/Downloads into folders by type.*
 
-A request that starts with a search phrase such as “google”, “search google” or “search the web”, followed by what to search for (for example “google Hyprland gaps”), opens a Google search in your browser instead of going to the AI. “open https://…” opens that link directly. Both work even before Pi is set up.
+Omar can read and search your files, and run shell commands when you let it, starting from your home folder. How far it gets depends on the model you choose.
 
-## What Pi does
+Some requests skip the AI entirely. Start with "google" or "search the web for" and Omar opens a Google search in your browser: `google hyprland gaps`. Type `open` and a web address, like `open https://omarchy.org`, and it opens that page. Neither goes to Pi, so both work before you've set Pi up.
 
-Pi does the AI work. You install Pi and sign in to your provider there; Ask Omar doesn't handle or store that sign-in. Ask Omar starts Pi in the background with a fixed set of tools: it can read and search your files, and it runs shell commands only through Ask Omar's safety modes. Pi's own Bash tool is off. Your own Pi extensions, skills and context files aren't loaded, including when Ask Omar lists models or checks your sign-in, and Pi runs without a saved session, so the conversation lives only in memory.
+## What's in the bar
 
-## Requirements
+- **Follow-ups.** Omar remembers the conversation until you press **New** or leave it for 30 minutes. Pressing **Stop**, switching model or safety mode, restarting Ask Omar, or a request that fails also starts a fresh one.
+- **Scratchpad.** Up to 20 notes for paths, prompts and half-finished thoughts. They stay on your computer and aren't included when you ask Omar something. To show Omar a note, copy it into your question.
+- **Capture.** Click the camera for a screenshot, or right-click for a window, the current screen, a 5-second delay or a screen recording. Omar copies the file's path so you can paste it into a question or a terminal. With Scratchpad open, a screenshot goes into your note instead.
+- **Dictation.** With [Voxtype](https://voxtype.io) installed, click the mic to start and stop, or hold it while you talk. Your words are typed where you're writing, and nothing is sent until you press Enter.
+- **Past answers.** Settings → Past answers keeps your recent questions and answers. Opening one lets you read it again; it doesn't pick that conversation back up.
 
-This is for **Omarchy Quattro (4.x), with its Quickshell plugin system**. It was tested with Omarchy **4.0.3-1**, Pi **0.85.1**, Python **3.14.7** and Node **26.8.1**. Other combinations are not yet certified.
+## Why I built it
 
-- Python **3.11+** available as `python`, Node with native TypeScript support (**22.18+**), `make` and `git`.
-- Omarchy's shell, plugin commands and capture/notification helpers; a working systemd user session.
-- `wl-copy`, `jq`, `grim`, `pgrep`, `xdg-open`, `tar`, `sha256sum`, `readlink` and the capture dependencies supplied by Omarchy. Voxtype is optional.
-- For AI: install Pi separately and connect a provider inside Pi. Model use follows your provider's access and pricing.
+I got hooked on Omarchy while moving over from macOS. Omar started as a box in the top bar where I could ask how the desktop worked. Then it picked up the other things I kept reaching for: somewhere to jot down paths and prompts, and a quick way to grab what's on screen.
 
-Setup checks dependencies before changing files. It doesn't request root or change packaged Omarchy files.
+I still use Pi in a terminal for big pieces of work that take a while. Omar is for everything I'd never open a terminal for. I don't come from a software development background, and I built this for people who don't either.
+
+Omarchy lets me decide how much an AI can do on my computer. On my Mac, Apple makes that call for me. So Omar runs with my permissions, and you choose how often it checks with you first.
+
+It looks simple because I kept using it and fixing whatever annoyed me. It's a personal project and it will keep improving. [Issues and ideas](CONTRIBUTING.md) are welcome, and the [roadmap](docs/ROADMAP.md) lists what isn't built yet.
 
 ## Install
 
-Read [Permissions and the guard](#permissions-and-the-guard) first. Ask Omar installs from GitHub with Omarchy's plugin manager, whether or not you found it through the marketplace:
+You'll need Omarchy 4, Python 3.11 or newer (as `python`), Node 22.18 or newer, `make` and `git`. For the AI side you'll also need [Pi](https://pi.dev), signed in to a provider. I've tested this release on Omarchy 4.0.3-1 with Pi 0.99.1.
+
+Copy the full commit for the latest release from the [release notes](https://github.com/chrisjskelton/ask-omar/releases), then run:
 
 ```bash
 omarchy plugin add https://github.com/chrisjskelton/ask-omar.git --yes
-```
-
-This clones and validates the widget but leaves it disabled. Pin the checkout to the release commit, set up the background service, then enable the widget:
-
-```bash
-cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
-# Copy the full 40-character commit from the latest release notes:
-ASK_OMAR_COMMIT=<full 40-character commit>
+cd ~/.config/omarchy/plugins/ask-omar.assistant
+ASK_OMAR_COMMIT=<full commit from the release notes>
 git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
 make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 omarchy plugin enable ask-omar.assistant
 ```
 
-Use the full commit, not a tag or short hash. `make setup` checks that exact commit and a clean checkout, runs Omarchy's plugin validation, then installs the background service, launchers and app-menu entries. An existing Ask Omar configuration is kept. If a file setup would replace has been changed, or wasn't installed by Ask Omar, it stops before changing anything and names the file.
+The first line downloads the widget and leaves it switched off. The checkout pins it to the release you picked, and `make setup` won't run if the folder doesn't match that commit exactly. If a tool it needs is missing, setup stops and says which before it installs anything. Then it adds the background service, the `ask-omar` commands and two app-menu entries. It doesn't use `sudo`, and everything it installs lives in your home folder. The last line puts Omar in your bar.
 
-For AI requests, run `pi`, use `/login` to connect your provider, then:
+To connect the AI, run `pi`, type `/login` and sign in to your provider. Then:
 
 ```bash
 ask-omar setup
 omarchy-shell ask-omar open
 ```
 
-First setup uses Pi's default model, or the first one Pi lists. You can choose another in Settings. Don't paste passwords, tokens or sign-in codes into Omar.
+`ask-omar setup` checks Pi and tells you anything left to do. The first time, Omar uses Pi's default model, or the first one Pi lists, and you can pick another in Settings. Never paste passwords, tokens or sign-in codes into Omar.
 
-A marketplace listing is discovery, not a security certification.
-
-### Moving from an older clone install
-
-Before 0.1.4, Ask Omar could also be installed with `git clone` and `make install`, which copied the widget into Omarchy's plugin folder. To switch:
-
-1. In your old clone, check out the new release commit, so you use the current uninstaller rather than the older one:
-
-   ```bash
-   # Copy the full 40-character commit from the latest release notes:
-   ASK_OMAR_COMMIT=<full 40-character commit>
-   git fetch origin
-   git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
-   ```
-
-2. Run `make uninstall`. When it asks whether to delete your notes, history and settings, answer N to keep them. Omarchy forgets the widget's place in the bar and its bar settings, so you may need to set those again.
-3. If uninstall says it left files in the plugin folder because you changed them, move that folder somewhere safe.
-4. Follow the steps above, then run `omarchy-restart-shell` so the bar loads the new widget. You can delete the old clone afterwards.
+Finding Ask Omar in the Omarchy marketplace means it's listed there, not that anyone has checked its security.
 
 ## Permissions and the guard
 
-Omar runs as you. It can read your files, run programs and use the network. Whether a task can get administrator access depends on your system's authentication and privilege policy.
+Omar runs as you. It can open your files, run programs and use the network, just as you can in a terminal. It isn't a sandbox. Whether it can get admin rights depends on how your system handles `sudo` and passwords.
 
-Pi's own Bash tool is off, so the AI can run shell commands only through Ask Omar's command tool. Pi's `read`, `grep`, `find` and `ls` tools never ask first, in any mode, so Omar can read any file you can.
+**Reading never asks.** Omar can read and search any file you can, in every mode.
 
-Choose a mode in Settings → Safety:
+**Commands go through the guard.** Pi's own shell tool is switched off, so every command Omar wants to run goes through Ask Omar instead, and follows the mode you pick in **Settings → Safety**:
 
 | Mode | What happens |
 |---|---|
-| **Ask First** (default) | Every command is shown before it runs. Choose **Allow once**, **Allow for 15 minutes** or **Deny**. The 15-minute option skips approval for routine commands, in this and later requests, until 15 minutes pass or the conversation ends (see above). |
-| **Ask for Recognized Risks** | Routine commands, including ordinary deletes, run without being shown. Omar asks only about commands it recognizes as high-risk. |
-| **Block Commands** | No shell commands. Omar can still read and search your files. |
-| **Always Allow — Dangerous** | Every command runs without asking, including destructive ones. Choosing it in Settings needs a separate confirmation. |
+| **Ask First** (default) | You see every command before it runs and choose **Allow once**, **Allow for 15 minutes** or **Deny**. |
+| **Ask for Recognized Risks** | Everyday commands, ordinary deletes included, run without asking. Omar only stops for ones that look dangerous. |
+| **Block Commands** | No shell commands at all. Omar can still read and search your files. |
+| **Always Allow — Dangerous** | Everything runs without asking, destructive commands included. Settings asks you to confirm before turning it on. |
 
-Omar is told to move things to the Trash when you ask it to delete them, so you can usually get them back. This is an instruction to the AI, not a lock: in Ask for Recognized Risks an ordinary delete runs without asking. Use Ask First if you want to see every command.
+**Allow for 15 minutes** lets everyday commands run without asking, for this question and the ones after it, until the 15 minutes are up or the conversation ends. Commands that look dangerous still ask.
 
-If an approval request isn't answered within 90 seconds, the request fails and the conversation starts fresh. A command is stopped after 60 seconds or 64 KiB of output, and can be up to 32 KiB long. Anything it leaves running in the background is stopped when the conversation ends. Stop cancels the current task, but **doesn't undo anything already done**.
+**The risk check is a warning, not a lock.** In every mode except Always Allow, Omar stops and asks before commands that look dangerous, such as `rm -rf`, `sudo`, wiping or partitioning a disk, shutting down, piping a download straight into a shell, or turning down Ask Omar's own safety setting. It goes by what the command says, so the same damage done another way, like running a script, can slip past it. Only Ask First, with no 15-minute allowance running, shows you every command.
 
-**The high-risk check is a warning, not a lock.** Except in Always Allow, Omar asks again before commands that match known risky patterns: recursive forced deletion (`rm -rf`), disk and partition tools, low-level overwrites, recursively making files world-writable, recursive ownership changes, privilege elevation, host-connected containers, power controls, downloaded code piped into a shell, fork bombs, and attempts to lower Ask Omar's own safety setting. A command can do the same things in ways the patterns don't catch, for example by running a script. Only Ask First, without an active 15-minute grant, shows you every command. Review commands as carefully as you would in a terminal; this isn't meant for unattended sensitive work.
+A few more things worth knowing:
+
+- When you ask Omar to delete something, it's told to move it to the Trash so you can get it back. That's an instruction to the AI, not a guarantee, and in Ask for Recognized Risks an ordinary delete runs without asking.
+- **Stop** cancels the current task. It doesn't undo anything already done.
+- A command is stopped after 60 seconds or 64 KiB of output. Anything it leaves running in the background stops when the conversation ends.
+- If you don't answer an approval within 90 seconds, the request is cancelled and the next question starts a fresh conversation.
+
+Read commands as carefully as you would in a terminal, and don't leave Always Allow on while Omar reads things you don't trust. [SECURITY.md](SECURITY.md) has the full detail.
 
 ## Privacy and retention
 
-No Ask Omar telemetry is implemented. Notes, drafts and recent answers are stored locally. Notes and captures aren't attached to requests. Your requests and any context Omar reads for a task may be sent through Pi to your chosen provider. Web searches open Google; opened sites and commands can use the network. Provider-side retention is governed by your provider and account settings.
+Ask Omar has no telemetry. Your notes, past answers and settings stay on your computer, in `~/.local/state/ask-omar` and `~/.config/ask-omar`. Your user permissions protect them; Ask Omar doesn't encrypt them.
 
-| Data | Retention |
-|---|---|
-| Recent questions and answers | Up to the newest 100 by default, within a 10 MiB shared state-file limit. Older answers are removed first to preserve notes and drafts. Clear in Settings, or set `[history] limit = 0` to disable storage. |
-| Draft | Up to 2,000 characters; expires when read after 24 hours. |
-| Scratchpad | Up to 20 notes of 20,000 characters each. Over-limit saves are rejected visibly. |
-| Attached screenshots | Private local copies. Removing a note does not remove its attachment files. |
-| Original captures | Stay in Omarchy's capture location. |
-| Conversation context | In Pi memory; the next request after 30 idle minutes starts fresh. |
-| Agent log | Private local stderr log, trimmed to its last 1 MiB whenever a new conversation starts. |
+What leaves your computer: your questions, and whatever Omar reads to answer them, go through Pi to your AI provider, and your provider's own settings decide what they keep. You sign in to your provider in Pi, and Ask Omar never handles that sign-in. Ask Omar starts Pi with its own fixed set of tools and without your Pi extensions, skills or context files, and the conversation lives only in memory. Web searches open Google, and commands Omar runs can use the network.
 
-State is in `${XDG_STATE_HOME:-~/.local/state}/ask-omar`; configuration is in `${XDG_CONFIG_HOME:-~/.config}/ask-omar`. If the saved-state file is corrupt, too large, in an unknown format or has entries Ask Omar can't read, Ask Omar keeps the original as `state.json.unreadable-…`, starts with whatever it could read, and says so in Scratchpad. If it can't be opened or moved aside, it is left in place and saves are refused. Local data is protected by user permissions, not encrypted by Ask Omar. Clipboard managers may retain copied content. Answers are displayed as plain text so remote images in model output are not automatically loaded.
+What's kept, and for how long:
 
-## Update and remove
+- **Past answers:** the newest 100. Clear them in Settings, or set `limit = 0` under `[history]` in `~/.config/ask-omar/config.toml` to keep none.
+- **Scratchpad:** up to 20 notes of 20,000 characters each. Screenshots added to a note are private copies, and deleting the note doesn't delete them.
+- **A question you started but didn't send:** comes back for up to 24 hours.
+- **Pi's background log:** private, and trimmed to its last 1 MiB whenever a new conversation starts.
+- **Your original screenshots and recordings:** stay wherever Omarchy saved them.
 
-Read the new release notes and use their full commit:
+If Ask Omar's saved-data file is ever damaged, Ask Omar keeps a copy as `state.json.unreadable-…`, loads what it can, and tells you in Scratchpad.
+
+## Update
+
+Read the new release notes, copy their full commit, then run:
 
 ```bash
-cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
+cd ~/.config/omarchy/plugins/ask-omar.assistant
 git fetch origin
-ASK_OMAR_COMMIT=<full 40-character commit from the release notes>
+ASK_OMAR_COMMIT=<full commit from the release notes>
 git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
 make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
 omarchy-restart-shell
 ```
 
-The running bar keeps the old widget until the shell restarts, so don't skip `omarchy-restart-shell`. `omarchy plugin update` updates the widget but not the background service. If you use it, then restart the shell, Ask Omar shows “Finish updating Ask Omar” until you run `make setup` as above.
+Don't skip the last line: the bar keeps running the old widget until the shell restarts. `omarchy plugin update` only updates the widget, not the background service. If you use it anyway, the new widget shows "Finish updating Ask Omar" until you run the steps above.
 
-To remove Ask Omar:
+## Remove
 
 ```bash
-cd "${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ask-omar.assistant"
+cd ~/.config/omarchy/plugins/ask-omar.assistant
 make uninstall
 omarchy plugin remove ask-omar.assistant
 ```
 
-`make uninstall` removes the service and launchers (any you have edited are left in place) and disables the widget, then asks whether to delete your Ask Omar notes, history and settings too. If you say no, they're kept and come back if you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and its sign-ins are never changed. To delete the saved data later:
-
-```bash
-rm -rf -- "${XDG_CONFIG_HOME:-$HOME/.config}/ask-omar" \
-  "${XDG_STATE_HOME:-$HOME/.local/state}/ask-omar"
-```
-
-Remove original captures separately if wanted. Local deletion does not erase provider-side data or clipboard history. If you set `ASK_OMAR_CONFIG`, manage that custom config file separately.
+`make uninstall` switches the widget off and removes the background service, commands and app-menu entries, leaving alone any you've edited. Then it asks whether to delete your notes, history and settings too. The answer defaults to no, and if you keep them they come back when you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and your provider sign-ins aren't touched, and nothing your provider holds is erased.
 
 ## Troubleshooting
 
-- **Setup refuses to replace a file:** you or another program changed it. Move the named file somewhere safe and run setup again. If you first installed before 0.1.4 and the checkout has no release tags, run `git fetch --tags` in the plugin folder first.
-- **Checkout verification fails:** copy the full 40-character commit from the release notes, run `git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"` in the plugin folder, and remove or preserve any local changes before retrying `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`.
-- **Widget says the background service isn't installed, or “Finish updating Ask Omar”:** in the plugin folder, check out the release commit as above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`. If it says the bar is still running the older widget, just run `omarchy-restart-shell`.
-- **`omarchy plugin add` says the plugin is already installed:** an older copied widget is still there, or uninstall left files you had changed. See [Moving from an older clone install](#moving-from-an-older-clone-install).
-- **Pi missing or disconnected:** install Pi, sign in within `pi` using `/login`, and rerun `ask-omar setup`.
-- **Service problem:** run `systemctl --user status ask-omar.service` and `journalctl --user -u ask-omar.service -n 40`. Inspect logs for private content before sharing.
-- **No mic:** install and configure Omarchy Dictation/Voxtype. The mic is optional.
-- **Save error:** keep the editor open and fix what the error names, such as text that's too long. If it says the notes file couldn't be read or moved aside, fix the file's permissions, run `systemctl --user restart ask-omar.service`, then save again. Your unsaved text stays in the editor.
-- **Model setting problem:** choose a model Pi lists. Pi's auth/RPC interface must support the flags used by this release.
+- **Setup won't replace a file:** you or another program changed it, or Ask Omar didn't put it there. Move the named file somewhere safe and run setup again.
+- **Setup says the checkout is at the wrong commit, or has changes:** run the checkout line again with the full commit from the release notes, and move any local changes out of the plugin folder.
+- **The widget says the background service isn't installed, or "Finish updating Ask Omar":** follow the [Update](#update) steps, then run `ask-omar setup`. If it only says the bar is running an older widget, run `omarchy-restart-shell`.
+- **Pi is missing or signed out:** install Pi, run `pi` and sign in with `/login`, then run `ask-omar setup` again.
+- **The mic is greyed out:** dictation needs Voxtype. Everything else works without it.
+- **A note won't save:** keep the editor open, since your text is still there, and fix what the message names, such as a note that's too long. If it says the notes file couldn't be read or moved aside, fix that file's permissions, run `systemctl --user restart ask-omar.service`, then save again.
+- **Anything else:** `systemctl --user status ask-omar.service` and `journalctl --user -u ask-omar.service -n 40` show what the service is doing. Check the output for anything private before you share it.
 
 ## How it fits together
 
 ```text
-Omarchy widget → ask-omar CLI → private Unix socket → Python user service → Pi → provider
-                                                 ↘ local notes and history
+Omarchy widget → ask-omar command → private Unix socket → Python user service → Pi → your provider
+                                                     ↘ local notes and history
 ```
 
-The Python service uses the standard library. Pi provides the agent loop and provider integration. Omarchy provides the desktop and capture tools; Voxtype provides optional dictation.
-
-## Why I built it
-
-I got hooked on Omarchy while moving over from macOS. Ask Omar began as a small place in the top bar to ask how the desktop worked. Through daily use it grew into a home for the quick questions, notes and captures I carry between agent sessions.
-
-I still use Pi in a terminal for longer sessions. Omar is for the small desktop jobs I want to start without opening one.
-
-This is a personal project and it will keep changing. [Issues and contributions](CONTRIBUTING.md) are welcome. See the [roadmap](docs/ROADMAP.md) for ideas that are not yet implemented.
+The service uses only Python's standard library. Pi runs the AI and talks to your provider. Omarchy supplies the desktop and capture tools, and Voxtype the optional dictation.
 
 ## Gallery
 
 ![Scratchpad with example notes](docs/media/ask-omar-scratchpad.png)
 ![Capture choices](docs/media/ask-omar-capture.png)
 
-MIT licensed. Built on Omarchy, Pi and Voxtype; no affiliation or endorsement implied.
+MIT licensed. Built on Omarchy, Pi and Voxtype, and not affiliated with or endorsed by any of them.
