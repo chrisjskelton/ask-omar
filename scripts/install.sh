@@ -17,6 +17,8 @@ SETTINGS_DESKTOP_TARGET="$DATA_HOME/applications/ask-omar-settings.desktop"
 GUARD_SOURCE="$ROOT/service/ask_omar/extensions/ask-omar-guard.ts"
 GUARD_TARGET="$APP_TARGET/extensions/ask-omar-guard.ts"
 APP_MANIFEST_NAME=.installed-files.sha256
+LAUNCHER_MANIFEST_NAME=.installed-launchers.sha256
+LAUNCHER_KINDS=(cli open capture service desktop settings-desktop)
 
 # The widget is the Omarchy plugin checkout itself (omarchy plugin add), so this
 # script installs only the companion backend. --backend-only is accepted for
@@ -101,6 +103,94 @@ PY
 
 PYTHON_BIN=$(readlink -f -- "$(command -v python)")
 [[ -x $PYTHON_BIN ]] || fail "could not resolve the Python interpreter."
+
+# The ask-omar launcher is its source with the Python path filled in. Older
+# releases differ only in the flags on that one line.
+render_cli_launcher() {
+  local line
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line == 'exec __ASK_OMAR_PYTHON__ '* ]]; then
+      printf 'exec %q %s\n' "$PYTHON_BIN" "${line#'exec __ASK_OMAR_PYTHON__ '}"
+    else
+      printf '%s\n' "$line"
+    fi
+  done
+}
+
+# Where each managed file comes from, and where it is installed.
+launcher_source() {
+  case $1 in
+    cli) echo scripts/ask-omar ;;
+    open) echo scripts/ask-omar-open ;;
+    capture) echo scripts/capture.sh ;;
+    service) echo systemd/ask-omar.service ;;
+    desktop) echo desktop/ask-omar.desktop ;;
+    settings-desktop) echo desktop/ask-omar-settings.desktop ;;
+  esac
+}
+launcher_target() {
+  case $1 in
+    cli) echo "$BIN_HOME/ask-omar" ;;
+    open) echo "$BIN_HOME/ask-omar-open" ;;
+    capture) echo "$BIN_HOME/ask-omar-capture" ;;
+    service) echo "$SERVICE_TARGET" ;;
+    desktop) echo "$DESKTOP_TARGET" ;;
+    settings-desktop) echo "$SETTINGS_DESKTOP_TARGET" ;;
+  esac
+}
+# What this setup will write for a managed file.
+render_launcher() {
+  if [[ $1 == cli ]]; then
+    render_cli_launcher < "$ROOT/scripts/ask-omar"
+  else
+    cat -- "$ROOT/$(launcher_source "$1")"
+  fi
+}
+
+# Installs from before the launcher manifest: the file must be byte-identical
+# to what one of the older releases installed. Tags are absent from shallow
+# checkouts, so a missing tag or file is skipped.
+matches_older_launcher() {
+  local kind=$1 target=$2 source tag
+  source=$(launcher_source "$kind")
+  for tag in v0.1.0 v0.1.1 v0.1.2 v0.1.3 v0.1.4 v0.1.5; do
+    git -C "$ROOT" rev-parse -q --verify "refs/tags/$tag" >/dev/null || continue
+    git -C "$ROOT" cat-file -e "$tag:$source" 2>/dev/null || continue
+    if [[ $kind == cli ]]; then
+      # Python may have been upgraded since, so ignore which interpreter the
+      # old launcher points at and compare everything else.
+      cmp -s <(sed -E 's#^exec [^ ]+ #exec __ASK_OMAR_PYTHON__ #' -- "$target") \
+        <(git -C "$ROOT" show "$tag:$source") && return 0
+    else
+      cmp -s -- "$target" <(git -C "$ROOT" show "$tag:$source") && return 0
+    fi
+  done
+  return 1
+}
+
+# An existing managed file is only replaced if it is already what this setup
+# writes, matches the hash recorded when it was installed, or (before the
+# record existed) matches a file an older release installed. The earlier
+# ownership checks have already refused symlinks and foreign files; an exact
+# pre-marker legacy file is accepted only when there is no record.
+PREVIOUS_LAUNCHERS="$APP_TARGET/$LAUNCHER_MANIFEST_NAME"
+if [[ -e $PREVIOUS_LAUNCHERS || -L $PREVIOUS_LAUNCHERS ]] &&
+    ! ask_omar_valid_launcher_manifest "$PREVIOUS_LAUNCHERS"; then
+  fail "refusing to replace an invalid launcher manifest: $PREVIOUS_LAUNCHERS"
+fi
+for kind in "${LAUNCHER_KINDS[@]}"; do
+  target=$(launcher_target "$kind")
+  [[ -e $target ]] || continue
+  cmp -s -- "$target" <(render_launcher "$kind") && continue
+  if [[ -f $PREVIOUS_LAUNCHERS ]]; then
+    hash=$(ask_omar_recorded_launcher_hash "$PREVIOUS_LAUNCHERS" "$kind") &&
+      ask_omar_matches_sha256 "$target" "$hash" && continue
+  else
+    ask_omar_has_marker "$target" || continue
+    matches_older_launcher "$kind" "$target" && continue
+  fi
+  fail "refusing to replace a file Ask Omar did not install, or that has been changed: $target"
+done
 
 # Test the capability Pi's TypeScript extension needs, instead of guessing a
 # Node version from its version string. Direct .ts execution works in modern Node.
@@ -276,13 +366,7 @@ elif [[ ! -L $CONFIG_TARGET ]]; then
   chmod 600 "$CONFIG_TARGET"
 fi
 
-while IFS= read -r line || [[ -n $line ]]; do
-  if [[ $line == 'exec __ASK_OMAR_PYTHON__ -B -m ask_omar "$@"' ]]; then
-    printf 'exec %q -B -m ask_omar "$@"\n' "$PYTHON_BIN"
-  else
-    printf '%s\n' "$line"
-  fi
-done < "$ROOT/scripts/ask-omar" > "$LAUNCHER_STAGE/ask-omar"
+render_launcher cli > "$LAUNCHER_STAGE/ask-omar"
 
 install -T -m 755 "$LAUNCHER_STAGE/ask-omar" "$BIN_HOME/ask-omar"
 install -T -m 755 "$ROOT/scripts/ask-omar-open" "$BIN_HOME/ask-omar-open"
@@ -290,6 +374,14 @@ install -T -m 755 "$ROOT/scripts/capture.sh" "$BIN_HOME/ask-omar-capture"
 install -T -m 644 "$ROOT/systemd/ask-omar.service" "$SERVICE_TARGET"
 install -T -m 644 "$ROOT/desktop/ask-omar.desktop" "$DESKTOP_TARGET"
 install -T -m 644 "$ROOT/desktop/ask-omar-settings.desktop" "$SETTINGS_DESKTOP_TARGET"
+
+# Record what was just installed so a later setup or uninstall can leave
+# anything the user changes since.
+for kind in "${LAUNCHER_KINDS[@]}"; do
+  read -r digest _ < <(sha256sum -- "$(launcher_target "$kind")")
+  printf '%s\t%s\n' "$kind" "$digest"
+done > "$LAUNCHER_STAGE/$LAUNCHER_MANIFEST_NAME"
+install -T -m 644 "$LAUNCHER_STAGE/$LAUNCHER_MANIFEST_NAME" "$PREVIOUS_LAUNCHERS"
 
 systemctl --user daemon-reload
 systemctl --user enable ask-omar.service >/dev/null

@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -180,6 +181,128 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("refusing to replace a file Ask Omar did not install", result.stderr)
         self.assertEqual(init.read_text(), "# the user's edited file\n")
+
+    def managed_files(self):
+        return {
+            "launcher": self.home / ".local/bin/ask-omar",
+            "service": self.config / "systemd/user/ask-omar.service",
+            "desktop": self.data / "applications/ask-omar.desktop",
+            "settings-desktop": self.data / "applications/ask-omar-settings.desktop",
+            "open": self.home / ".local/bin/ask-omar-open",
+            "capture": self.home / ".local/bin/ask-omar-capture",
+        }
+
+    def test_setup_refuses_edited_launchers_service_and_menu_entries(self):
+        for name, path in self.managed_files().items():
+            with self.subTest(name=name):
+                self.reset_home()
+                self.run_script("install.sh")
+                # The marker stays: only the hash can tell this edit apart.
+                edited = path.read_text() + "# the user's own edit\n"
+                path.write_text(edited)
+                result = self.run_script("install.sh", success=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(
+                    "refusing to replace a file Ask Omar did not install, or that has been changed: "
+                    f"{path}",
+                    result.stderr,
+                )
+                self.assertEqual(path.read_text(), edited)
+
+    def test_setup_accepts_an_unchanged_install_and_rewrites_the_record(self):
+        self.run_script("install.sh")
+        record = self.data / "ask-omar/.installed-launchers.sha256"
+        first = record.read_text()
+        self.assertEqual(len(first.splitlines()), 6)
+        self.run_script("install.sh")
+        self.assertEqual(record.read_text(), first)
+
+    def test_setup_upgrades_files_that_are_already_this_releases(self):
+        self.run_script("install.sh")
+        # Nothing recorded, but the files are exactly what setup writes.
+        (self.data / "ask-omar/.installed-launchers.sha256").unlink()
+        self.run_script("install.sh")
+        self.assertTrue((self.data / "ask-omar/.installed-launchers.sha256").is_file())
+
+    def test_setup_refuses_an_edited_launcher_without_a_launcher_record(self):
+        self.run_script("install.sh")
+        (self.data / "ask-omar/.installed-launchers.sha256").unlink()
+        launcher = self.home / ".local/bin/ask-omar"
+        edited = launcher.read_text() + "# the user's own edit\n"
+        launcher.write_text(edited)
+        result = self.run_script("install.sh", success=False)
+        self.assertIn("refusing to replace a file Ask Omar did not install, or that has been changed", result.stderr)
+        self.assertEqual(launcher.read_text(), edited)
+
+    def test_setup_refuses_an_invalid_launcher_record(self):
+        self.run_script("install.sh")
+        record = self.data / "ask-omar/.installed-launchers.sha256"
+        record.write_text("cli\tnot-a-hash\n")
+        result = self.run_script("install.sh", success=False)
+        self.assertIn("invalid launcher manifest", result.stderr)
+
+    def test_setup_upgrades_files_installed_by_older_releases(self):
+        tags = subprocess.run(
+            ["git", "tag", "--list", "v0.1.[2-5]"],
+            cwd=ROOT, text=True, capture_output=True, check=True,
+        ).stdout.split()
+        if not tags:
+            self.skipTest("release tags v0.1.2-v0.1.5 are not in this checkout (shallow clone)")
+        python = Path(shutil.which("python", path=self.env["PATH"])).resolve()
+        files = self.managed_files()
+        sources = {
+            "launcher": "scripts/ask-omar",
+            "open": "scripts/ask-omar-open",
+            "capture": "scripts/capture.sh",
+            "service": "systemd/ask-omar.service",
+            "desktop": "desktop/ask-omar.desktop",
+            "settings-desktop": "desktop/ask-omar-settings.desktop",
+        }
+        for tag in tags:
+            with self.subTest(tag=tag):
+                self.reset_home()
+                for name, source in sources.items():
+                    text = subprocess.check_output(
+                        ["git", "show", f"{tag}:{source}"], cwd=ROOT, text=True
+                    )
+                    text = text.replace("__ASK_OMAR_PYTHON__", shlex.quote(str(python)))
+                    files[name].parent.mkdir(parents=True, exist_ok=True)
+                    files[name].write_text(text)
+                self.run_script("install.sh")
+                self.assertTrue((self.data / "ask-omar/.installed-launchers.sha256").is_file())
+                self.assertIn("-B -m ask_omar", files["launcher"].read_text())
+
+    def test_uninstall_leaves_an_edited_launcher_and_removes_the_rest(self):
+        self.run_script("install.sh")
+        files = self.managed_files()
+        edited = files["launcher"].read_text() + "# the user's own edit\n"
+        files["launcher"].write_text(edited)
+        result = self.run_script("uninstall.sh")
+        self.assertIn(f"Leaving modified file: {files['launcher']}", result.stderr)
+        self.assertEqual(files["launcher"].read_text(), edited)
+        for name, path in files.items():
+            if name != "launcher":
+                self.assertFalse(path.exists(), name)
+        self.assertFalse((self.data / "ask-omar").exists())
+
+    def test_uninstall_leaves_edited_service_and_menu_entries(self):
+        for name in ("service", "desktop", "settings-desktop"):
+            with self.subTest(name=name):
+                self.reset_home()
+                self.run_script("install.sh")
+                path = self.managed_files()[name]
+                edited = path.read_text() + "# edit\n"
+                path.write_text(edited)
+                result = self.run_script("uninstall.sh")
+                self.assertIn(f"Leaving modified file: {path}", result.stderr)
+                self.assertEqual(path.read_text(), edited)
+
+    def test_uninstall_without_a_launcher_record_keeps_marker_behaviour(self):
+        self.run_script("install.sh")
+        (self.data / "ask-omar/.installed-launchers.sha256").unlink()
+        self.run_script("uninstall.sh")
+        for path in self.managed_files().values():
+            self.assertFalse(path.exists())
 
     def test_uninstall_deletes_user_data_only_when_the_user_says_yes(self):
         import pty

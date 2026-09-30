@@ -79,6 +79,27 @@ ask_omar_valid_app_manifest() {
   done < "$path"
 }
 
+# Setup records the hash of each launcher, the service unit and the two menu
+# entries it installs, one "kind<TAB>hash" line each, so a later setup or
+# uninstall can tell an untouched file from one the user has edited.
+ask_omar_valid_launcher_manifest() {
+  local path=$1 kind hash extra
+  [[ -f $path && ! -L $path ]] || return 1
+  while IFS=$'\t' read -r kind hash extra || [[ -n ${kind}${hash}${extra} ]]; do
+    case $kind in
+      cli | open | capture | service | desktop | settings-desktop) ;;
+      *) return 1 ;;
+    esac
+    [[ $hash =~ ^[0-9a-f]{64}$ && -z $extra ]] || return 1
+  done < "$path"
+}
+
+ask_omar_recorded_launcher_hash() {
+  local manifest=$1 kind=$2
+  awk -F '\t' -v kind="$kind" '$1 == kind { print $2; found = 1; exit } END { exit !found }' \
+    "$manifest"
+}
+
 # Before 0.1.4, `make install` copied the widget into Omarchy's plugin folder.
 # Since 0.1.4 the plugin folder is always a Git checkout, so this list of the
 # copied releases (0.1.0-0.1.3) is complete and never needs new entries.

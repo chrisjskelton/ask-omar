@@ -12,6 +12,7 @@ SERVICE_TARGET="$CONFIG_HOME/systemd/user/ask-omar.service"
 PLUGIN_TARGET="$CONFIG_HOME/omarchy/plugins/ask-omar.assistant"
 APP_TARGET="$DATA_HOME/ask-omar"
 APP_MANIFEST_NAME=.installed-files.sha256
+LAUNCHER_MANIFEST="$APP_TARGET/.installed-launchers.sha256"
 
 case ${1:-full} in
   full) [[ $# -eq 0 ]] || { echo "Usage: $0 [--backend-only]" >&2; exit 2; } ;;
@@ -20,10 +21,21 @@ case ${1:-full} in
 esac
 mode=${1:-full}
 
+# With a launcher manifest (written by setup since 0.1.6) only a file that still
+# matches its recorded hash is removed. Without one, the marker or an exact
+# legacy match is enough, as before.
 remove_owned_file() {
-  local path=$1 kind=$2
+  local path=$1 kind=$2 hash
   [[ -e $path || -L $path ]] || return 0
-  if ask_omar_owns_file "$path" "$kind" "$ROOT"; then
+  if [[ -e $LAUNCHER_MANIFEST || -L $LAUNCHER_MANIFEST ]]; then
+    if ask_omar_valid_launcher_manifest "$LAUNCHER_MANIFEST" &&
+        hash=$(ask_omar_recorded_launcher_hash "$LAUNCHER_MANIFEST" "$kind") &&
+        ask_omar_matches_sha256 "$path" "$hash"; then
+      rm -f -- "$path"
+    else
+      echo "Leaving modified file: $path" >&2
+    fi
+  elif ask_omar_owns_file "$path" "$kind" "$ROOT"; then
     rm -f -- "$path"
   else
     echo "Leaving file Ask Omar did not install: $path" >&2
@@ -115,7 +127,7 @@ if ask_omar_owns_app_directory "$APP_TARGET"; then
         echo "Leaving modified application file: $path" >&2
       fi
     done < "$manifest"
-    rm -f -- "$manifest"
+    rm -f -- "$manifest" "$LAUNCHER_MANIFEST"
     rmdir -- "$APP_TARGET" 2>/dev/null || true
   else
     echo "Leaving application directory without a valid managed-file manifest: $APP_TARGET" >&2

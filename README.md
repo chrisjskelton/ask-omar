@@ -145,7 +145,7 @@ make uninstall
 omarchy plugin remove ask-omar.assistant
 ```
 
-`make uninstall` removes the service and launchers and disables the widget, then asks whether to delete your Ask Omar notes, history and settings too. If you say no, they're kept and come back if you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and its sign-ins are never changed. To delete the saved data later:
+`make uninstall` removes the service and launchers (any you have edited are left in place) and disables the widget, then asks whether to delete your Ask Omar notes, history and settings too. If you say no, they're kept and come back if you reinstall. `omarchy plugin remove` deletes the widget folder. Pi and its sign-ins are never changed. To delete the saved data later:
 
 ```bash
 rm -rf -- "${XDG_CONFIG_HOME:-$HOME/.config}/ask-omar" \
