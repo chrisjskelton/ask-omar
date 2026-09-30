@@ -263,5 +263,6 @@ elif [[ ! -d $PLUGIN_TARGET ]]; then
   echo "Install the widget with: omarchy plugin add https://github.com/chrisjskelton/ask-omar.git"
 else
   echo "If the widget is not enabled yet, run: omarchy plugin enable ask-omar.assistant"
+  echo "If you updated Ask Omar, run omarchy-restart-shell so the bar loads the new widget."
 fi
 echo "Check the AI connection with: ask-omar setup"

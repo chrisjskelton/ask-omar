@@ -83,7 +83,7 @@ Before 0.1.4, Ask Omar could also be installed with `git clone` and `make instal
 
 2. Run `make uninstall`. Your Ask Omar settings and notes are kept. Omarchy forgets the widget's place in the bar and its bar settings, so you may need to set those again.
 3. If uninstall says it left files in the plugin folder because you changed them, move that folder somewhere safe.
-4. Follow the steps above. You can delete the old clone afterwards.
+4. Follow the steps above, then run `omarchy-restart-shell` so the bar loads the new widget. You can delete the old clone afterwards.
 
 ## Permissions and the guard
 
@@ -130,9 +130,10 @@ git fetch origin
 ASK_OMAR_COMMIT=<full 40-character commit from the release notes>
 git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
 make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"
+omarchy-restart-shell
 ```
 
-`omarchy plugin update` updates the widget but not the background service. If you use it, Ask Omar shows “Finish updating Ask Omar” until you run `make setup` as above.
+The running bar keeps the old widget until the shell restarts, so don't skip `omarchy-restart-shell`. `omarchy plugin update` updates the widget but not the background service. If you use it, then restart the shell, Ask Omar shows “Finish updating Ask Omar” until you run `make setup` as above.
 
 To remove Ask Omar:
 

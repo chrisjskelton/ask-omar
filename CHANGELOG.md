@@ -8,6 +8,7 @@
 - A sign-in check that overlaps a provider change is cached for the provider it actually checked.
 - The widget's setup messages point to the README's install steps instead of suggesting a bare `make setup`.
 - Moving from an old clone install now uses the current uninstaller, and the README says what happens to bar settings and changed files.
+- Updates now end with `omarchy-restart-shell`. The running bar keeps the old widget until the shell restarts, which the docs and setup output didn't say.
 - The docs say what the 60-second limit covers, which Google search phrases work, and how to recover from a blocked save.
 
 ## 0.1.4 — One install route and safer notes

@@ -174,6 +174,8 @@ class InstallIntegrationTests(unittest.TestCase):
         self.assertNotIn("omarchy plugin enable", self.calls())
         self.assertNotIn("omarchy-restart-shell", self.calls())
         self.assertIn("omarchy plugin enable ask-omar.assistant", result.stdout)
+        # The running shell keeps the old widget after an update until it restarts.
+        self.assertIn("run omarchy-restart-shell so the bar loads the new widget", result.stdout)
 
     def test_setup_without_a_widget_explains_how_to_add_it(self):
         result = self.run_script("install.sh")
