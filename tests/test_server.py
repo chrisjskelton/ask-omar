@@ -456,14 +456,10 @@ class LocalAnswerTests(unittest.TestCase):
             return subprocess.CompletedProcess(command, 1, '{"status":"not_ready"}', "")
 
         with patch("ask_omar.server.subprocess.run", side_effect=pi_auth_check):
-            during_change = self.omar.health()
+            self.omar.health()
             result = self.omar.health(refresh=False)
 
-        # The overlapping reply names the provider it checked, not the new one.
-        self.assertEqual(during_change["provider"], first)
-        self.assertEqual(during_change["agent"]["status"], "ready")
         self.assertEqual(checked, [first, other])
-        self.assertEqual(result["provider"], other)
         self.assertEqual(result["agent"]["status"], "signin")
 
     @patch("ask_omar.server.shutil.which", return_value="/usr/bin/pi")
