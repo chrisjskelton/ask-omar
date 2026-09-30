@@ -59,7 +59,7 @@ class QmlBehaviorTests(unittest.TestCase):
             'assert.equal(context.healthStatus, "update");',
             'assert.equal(context.stateWarning, "kept aside");',
             'assert.match(vm.runInContext(`healthTitle()`, context), /Finish updating/);',
-            'assert.match(vm.runInContext(`healthLabel()`, context), /0\\.1\\.3.*make setup/);',
+            'assert.match(vm.runInContext(`healthLabel()`, context), /0\\.1\\.3.*update steps/);',
             # A newer service means setup already ran; only the shell restart is missing.
             'context.raw = JSON.stringify({...ready, version: "0.1.10"});',
             'vm.runInContext(`handleHealth(raw)`, context);',

@@ -215,8 +215,8 @@ recorded_hash() {
 }
 matches_older_release() {
   local relative=$1 target=$2 source tag
-  # The exact 0.1.0/0.1.1 files used to recognise an older install, so this
-  # works even in a checkout without release tags.
+  # These two are checked against the exact 0.1.0/0.1.1 hashes used to
+  # recognise an older install. Every other file needs the release tags.
   case $relative in
     service/ask_omar/__init__.py)
       ask_omar_matches_sha256 "$target" 99f685c4490a478c5f010859d3bd635dfb1c73b59fc207fad499aeb7dbc19735 ||

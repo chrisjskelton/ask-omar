@@ -1629,7 +1629,7 @@ BarWidget {
     if (healthStatus === "update")
       return "The Ask Omar widget (" + widgetVersion + ") is newer than its background service ("
         + (serviceVersion !== "" ? serviceVersion : "an older version")
-        + "). In Ask Omar's plugin folder, run make setup as in the README's update steps, then check again."
+        + "). Follow the update steps in Ask Omar's README, then check again."
     return healthMessage !== "" ? healthMessage : "Ask Omar couldn't check Pi. Scratchpad and capture are still available."
   }
 

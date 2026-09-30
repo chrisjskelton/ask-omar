@@ -81,7 +81,7 @@ Before 0.1.4, Ask Omar could also be installed with `git clone` and `make instal
    git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"
    ```
 
-2. Run `make uninstall`. Your Ask Omar settings and notes are kept. Omarchy forgets the widget's place in the bar and its bar settings, so you may need to set those again.
+2. Run `make uninstall`. When it asks whether to delete your notes, history and settings, answer N to keep them. Omarchy forgets the widget's place in the bar and its bar settings, so you may need to set those again.
 3. If uninstall says it left files in the plugin folder because you changed them, move that folder somewhere safe.
 4. Follow the steps above, then run `omarchy-restart-shell` so the bar loads the new widget. You can delete the old clone afterwards.
 
@@ -157,7 +157,7 @@ Remove original captures separately if wanted. Local deletion does not erase pro
 ## Troubleshooting
 
 - **Checkout verification fails:** copy the full 40-character commit from the release notes, run `git -c advice.detachedHead=false checkout --detach "$ASK_OMAR_COMMIT"` in the plugin folder, and remove or preserve any local changes before retrying `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`.
-- **Widget says the background service isn't installed, or “Finish updating Ask Omar”:** in the plugin folder, check out the release commit as above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`.
+- **Widget says the background service isn't installed, or “Finish updating Ask Omar”:** in the plugin folder, check out the release commit as above, run `make setup ASK_OMAR_COMMIT="$ASK_OMAR_COMMIT"`, then `ask-omar setup`. If it says the bar is still running the older widget, just run `omarchy-restart-shell`.
 - **`omarchy plugin add` says the plugin is already installed:** an older copied widget is still there, or uninstall left files you had changed. See [Moving from an older clone install](#moving-from-an-older-clone-install).
 - **Pi missing or disconnected:** install Pi, sign in within `pi` using `/login`, and rerun `ask-omar setup`.
 - **Service problem:** run `systemctl --user status ask-omar.service` and `journalctl --user -u ask-omar.service -n 40`. Inspect logs for private content before sharing.

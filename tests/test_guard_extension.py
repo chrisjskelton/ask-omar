@@ -126,6 +126,7 @@ class GuardExtensionTests(unittest.TestCase):
             "false \\\\\nrm -rf /tmp/example": "Recursive forced deletion",
             "false \\\r\nrm -rf /tmp/example": "Recursive forced deletion",
             "r'm' -r'f' /tmp/example": "Recursive forced deletion",
+            'rm "-rf" /tmp/example': "Recursive forced deletion",
             "shred private.txt": "Secure file overwrite",
             "mkfs.ext4 /dev/sda": "Disk or filesystem erasure",
             "dd if=image.iso of=/dev/sdb": "Raw device write",

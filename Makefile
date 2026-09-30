@@ -25,4 +25,4 @@ setup: verify
 	@./scripts/install.sh
 
 uninstall:
-	./scripts/uninstall.sh
+	@./scripts/uninstall.sh
